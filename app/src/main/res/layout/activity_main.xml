@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- Live Camera Viewfinder (Main Background Area) -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/viewFinder"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Top Bar Title -->
+    <TextView
+        android:id="@+id/appTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="WORLD LENS"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:gravity="center"
+        android:padding="16dp"
+        android:background="#80000000"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Bottom Controls Overlay Panel -->
+    <LinearLayout
+        android:id="@+id/bottomPanel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#D0121212"
+        android:padding="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Accessibility Mode Toggle Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="10dp">
+
+            <TextView
+                android:id="@+id/accessibilityLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="[ Accessibility Mode: OFF ]"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#AAAAAA"
+                android:letterSpacing="0.06" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/accessibilitySwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:contentDescription="Toggle Accessibility Mode with haptic feedback"
+                android:checked="false" />
+        </LinearLayout>
+
+        <!-- AI Answer Section -->
+        <TextView
+            android:id="@+id/aiAnswerHeader"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AI ANSWER"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="#AAAAAA"
+            android:letterSpacing="0.08" />
+
+        <TextView
+            android:id="@+id/resultText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Point your camera at something and ask a question."
+            android:textSize="15sp"
+            android:textColor="#FFFFFF"
+            android:paddingTop="6dp"
+            android:paddingBottom="12dp"
+            android:minLines="2"
+            android:importantForAccessibility="yes"
+            android:accessibilityLiveRegion="polite" />
+
+        <!-- Question Input Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="12dp">
+
+            <EditText
+                android:id="@+id/questionInput"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:hint="Ask World Lens..."
+                android:textColorHint="#888888"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:background="#26FFFFFF"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:maxLines="1"
+                android:inputType="text"
+                android:contentDescription="Question input field" />
+
+            <Button
+                android:id="@+id/micButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:text="🎤"
+                android:textSize="18sp"
+                android:padding="0dp"
+                android:minWidth="48dp"
+                android:minHeight="48dp"
+                android:contentDescription="Microphone voice input. Tap to speak your question." />
+        </LinearLayout>
+
+        <!-- Action Buttons Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/newScanButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="50dp"
+                android:layout_marginEnd="8dp"
+                android:minWidth="90dp"
+                android:minHeight="48dp"
+                android:text="NEW SCAN"
+                android:textSize="13sp"
+                android:contentDescription="New scan. Point camera at a new object and ask a question." />
+
+            <Button
+                android:id="@+id/askButton"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_weight="1"
+                android:minHeight="48dp"
+                android:text="ASK WORLD LENS"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:contentDescription="Ask World Lens about the camera image" />
+        </LinearLayout>
+
+        <!-- Small Loading Indicator -->
+        <ProgressBar
+            android:id="@+id/loadingProgressBar"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
