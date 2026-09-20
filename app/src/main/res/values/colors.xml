@@ -1,5 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <!-- White Theme / VisionRelay Style -->
+    <color name="wl_primary">#6B4EFF</color> <!-- Vibrant Purple/Blue -->
+    <color name="wl_primary_light">#EAE6FF</color>
+    <color name="wl_background">#F8F9FA</color> <!-- Off-white background -->
+    <color name="wl_surface">#FFFFFF</color> <!-- Pure white for cards -->
+    <color name="wl_surface_variant">#F1F3F4</color> <!-- Slightly darker for input fields -->
+    
+    <color name="wl_text_primary">#202124</color>
+    <color name="wl_text_secondary">#5F6368</color>
+    <color name="wl_text_on_primary">#FFFFFF</color>
+    
+    <!-- Accent colors for cards (Morse Summary etc) -->
+    <color name="wl_accent_purple">#F3E8FF</color>
+    <color name="wl_accent_green">#E6F4EA</color>
+    
+    <!-- Icon tints -->
+    <color name="wl_icon_tint">#202124</color>
+    <color name="wl_icon_tint_inactive">#BDC1C6</color>
+    <color name="wl_divider">#E8EAED</color>
 </resources>

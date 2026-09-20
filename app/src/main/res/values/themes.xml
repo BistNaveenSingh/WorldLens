@@ -1,8 +1,17 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
     <style name="Base.Theme.WorldLens" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+        <item name="colorPrimary">@color/wl_primary</item>
+        <item name="colorOnPrimary">@color/wl_text_on_primary</item>
+        <item name="colorPrimaryContainer">@color/wl_primary_light</item>
+        <item name="colorOnPrimaryContainer">@color/wl_primary</item>
+        <item name="colorSecondary">@color/wl_text_secondary</item>
+        <item name="colorOnSecondary">@color/wl_surface</item>
+        <item name="colorSurface">@color/wl_surface</item>
+        <item name="colorOnSurface">@color/wl_text_primary</item>
+        <item name="android:colorBackground">@color/wl_background</item>
+        <item name="colorOutline">@color/wl_divider</item>
+        <item name="android:statusBarColor">@color/wl_background</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
     <style name="Theme.WorldLens" parent="Base.Theme.WorldLens" />

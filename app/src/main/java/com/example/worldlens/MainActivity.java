@@ -19,6 +19,17 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
+import android.content.ClipboardManager;
+import android.content.ClipData;
+import android.content.Intent;
+import android.net.Uri;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import com.example.worldlens.morse.MorseEncoder;
+import com.example.worldlens.morse.MorseSoundPlayer;
+
 import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -71,11 +82,36 @@ public class MainActivity extends AppCompatActivity {
     private TextView resultText;
     private PreviewView viewFinder;
     private EditText questionInput;
-    private Button micButton;
+    private ImageButton micButton;
     private Button askButton;
-    private Button newScanButton;
     private ProgressBar loadingProgressBar;
     private ExecutorService cameraExecutor;
+
+    // Export UI
+    private View copyResultCard;
+    private View exportReportCard;
+
+    // UI States & Navigation
+    private View cameraStateContainer;
+    private View resultStateContainer;
+    private View loadingStateContainer;
+    private View errorStateContainer;
+    private View exportStateContainer;
+    
+    private TextView errorText;
+    private Button retryButton;
+    private TextView questionEchoText;
+    private Button readAnswerButton;
+    private Button stopMorseButton;
+    private Button playMorseButton;
+    private Button openExportStateButton;
+    private TextView morseSummaryText;
+    private TextView morseCodeText;
+    
+    private View backToHomeButton;
+    private View deleteScanButton;
+    private View backToResultButton;
+    private Button newScanButtonFromExport;
 
     // Local Gemma VLM engine, conversation session, and background executor
     private Engine gemmaEngine;
@@ -107,6 +143,15 @@ public class MainActivity extends AppCompatActivity {
     private TextToSpeech textToSpeech;
     private boolean isTtsReady = false;
 
+    // Morse Audio Player
+    private MorseSoundPlayer morseSoundPlayer;
+
+    // State Variables
+    private String lastAskedQuestion = "";
+    private String currentFullAnswer = "";
+    private String currentMorseSummary = "";
+    private String currentMorseCode = "";
+
     // Haptic Feedback Event Types
     private enum HapticEvent {
         PROCESSING_STARTED,
@@ -122,7 +167,7 @@ public class MainActivity extends AppCompatActivity {
                     startCamera();
                 } else {
                     Toast.makeText(this, "Camera permission is required.", Toast.LENGTH_LONG).show();
-                    resultText.setText("Camera permission denied.");
+                    showErrorState("Camera permission denied.");
                 }
             });
 
@@ -158,11 +203,36 @@ public class MainActivity extends AppCompatActivity {
         questionInput = findViewById(R.id.questionInput);
         micButton = findViewById(R.id.micButton);
         askButton = findViewById(R.id.askButton);
-        newScanButton = findViewById(R.id.newScanButton);
         loadingProgressBar = findViewById(R.id.loadingProgressBar);
         accessibilityLabel = findViewById(R.id.accessibilityLabel);
         accessibilitySwitch = findViewById(R.id.accessibilitySwitch);
+        
+        // Find these if they exist in XML
+        playMorseButton = findViewById(R.id.playMorseButton);
+        morseSummaryText = findViewById(R.id.morseSummaryText);
+        morseCodeText = findViewById(R.id.morseCodeText);
+        copyResultCard = findViewById(R.id.copyResultCard);
+        exportReportCard = findViewById(R.id.exportReportCard);
+        
+        cameraStateContainer = findViewById(R.id.cameraStateContainer);
+        resultStateContainer = findViewById(R.id.resultStateContainer);
+        loadingStateContainer = findViewById(R.id.loadingStateContainer);
+        errorStateContainer = findViewById(R.id.errorStateContainer);
+        exportStateContainer = findViewById(R.id.exportStateContainer);
+        
+        errorText = findViewById(R.id.errorText);
+        retryButton = findViewById(R.id.retryButton);
+        questionEchoText = findViewById(R.id.questionEchoText);
+        readAnswerButton = findViewById(R.id.readAnswerButton);
+        stopMorseButton = findViewById(R.id.stopMorseButton);
+        openExportStateButton = findViewById(R.id.openExportStateButton);
+        
+        backToHomeButton = findViewById(R.id.backToHomeButton);
+        deleteScanButton = findViewById(R.id.deleteScanButton);
+        backToResultButton = findViewById(R.id.backToResultButton);
+        newScanButtonFromExport = findViewById(R.id.newScanButtonFromExport);
 
+        morseSoundPlayer = new MorseSoundPlayer(this);
         // Initialize Haptic Engine and Text-to-Speech
         initHaptics();
         initTextToSpeech();
@@ -191,25 +261,35 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupUIListeners() {
-        accessibilitySwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            isAccessibilityModeEnabled = isChecked;
-            accessibilityLabel.setText(isChecked ? "[ Accessibility Mode: ON ]" : "[ Accessibility Mode: OFF ]");
-            if (isChecked) {
-                resultText.setTextSize(18);
-                triggerHaptic(HapticEvent.PROCESSING_STARTED);
-                Toast.makeText(this, "Accessibility Mode enabled (Haptics ON)", Toast.LENGTH_SHORT).show();
-            } else {
-                resultText.setTextSize(15);
-                if (vibrator != null) {
-                    vibrator.cancel();
+        if (accessibilitySwitch != null) {
+            accessibilitySwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                isAccessibilityModeEnabled = isChecked;
+                accessibilityLabel.setText(isChecked ? "[ Accessibility Mode: ON ]" : "[ Accessibility Mode: OFF ]");
+                if (isChecked) {
+                    if (resultText != null) resultText.setTextSize(18);
+                    triggerHaptic(HapticEvent.PROCESSING_STARTED);
+                    Toast.makeText(this, "Accessibility Mode enabled (Haptics ON)", Toast.LENGTH_SHORT).show();
+                } else {
+                    if (resultText != null) resultText.setTextSize(15);
+                    if (vibrator != null) {
+                        vibrator.cancel();
+                    }
+                    Toast.makeText(this, "Accessibility Mode disabled", Toast.LENGTH_SHORT).show();
                 }
-                Toast.makeText(this, "Accessibility Mode disabled", Toast.LENGTH_SHORT).show();
-            }
-        });
+            });
+        }
 
-        newScanButton.setOnClickListener(v -> resetConversation());
+        if (newScanButtonFromExport != null) newScanButtonFromExport.setOnClickListener(v -> resetConversation());
+        if (openExportStateButton != null) openExportStateButton.setOnClickListener(v -> showExportState());
+        if (backToHomeButton != null) backToHomeButton.setOnClickListener(v -> resetConversation());
+        if (deleteScanButton != null) deleteScanButton.setOnClickListener(v -> resetConversation());
+        if (backToResultButton != null) backToResultButton.setOnClickListener(v -> showResultState());
+        if (copyResultCard != null) copyResultCard.setOnClickListener(v -> copyResultToClipboard());
+        if (exportReportCard != null) exportReportCard.setOnClickListener(v -> exportReportToMarkdown());
+        if (playMorseButton != null) playMorseButton.setOnClickListener(v -> playMorseCode());
+        if (stopMorseButton != null) stopMorseButton.setOnClickListener(v -> stopMorseCode());
 
-        askButton.setOnClickListener(v -> {
+        if (askButton != null) askButton.setOnClickListener(v -> {
             if (isListening) {
                 stopListening();
             }
@@ -219,7 +299,6 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            // If model is missing or not ready, let user pick/import it from Downloads folder
             if (gemmaModelFile == null || (!isGemmaReady && !isGemmaLoading)) {
                 modelPickerLauncher.launch(new String[]{"*/*"});
                 return;
@@ -238,49 +317,135 @@ public class MainActivity extends AppCompatActivity {
 
             String question = questionInput.getText().toString().trim();
             if (question.isEmpty()) {
-                Toast.makeText(this, "Please type a question or tap the microphone.", Toast.LENGTH_SHORT).show();
-                return;
+                question = "Describe this image in detail.";
+            } else {
+                isCustomQuestionAsked = true;
             }
 
-            isCustomQuestionAsked = true;
+            lastAskedQuestion = question;
+            showLoadingState();
+
             isInferenceRunning = true;
-            loadingProgressBar.setVisibility(View.VISIBLE);
+            if (loadingProgressBar != null) loadingProgressBar.setVisibility(View.VISIBLE);
             askButton.setEnabled(false);
-            newScanButton.setEnabled(false);
+            if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(false);
             stopSpeaking();
+            stopMorseCode();
             triggerHaptic(HapticEvent.PROCESSING_STARTED);
 
-            if (isFirstTurnOfScan) {
-                resultText.setText("Analyzing image & answering...");
+            String finalQ = question;
+            runOnUiThread(() -> {
+                askButton.setText("ASK WORLD LENS");
+                askButton.setEnabled(true);
+                if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
+            });
 
-                // Capture ONE camera frame snapshot from the active preview (leaves CameraX untouched)
+            if (isFirstTurnOfScan) {
                 Bitmap capturedBitmap = viewFinder.getBitmap();
                 if (capturedBitmap == null) {
-                    // Fallback to local cat.jpg test image if camera preview is unavailable
-                    capturedBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.cat);
+                    isInferenceRunning = false;
+                    showErrorState("Failed to capture image from camera.");
+                    return;
                 }
-
                 final Bitmap imageForInference = capturedBitmap;
-                vlmExecutor.execute(() -> runGemmaTurn(question, imageForInference, true));
+                vlmExecutor.execute(() -> runGemmaTurn(finalQ, imageForInference, true));
             } else {
-                resultText.setText("Thinking (using conversation history)...");
-                vlmExecutor.execute(() -> runGemmaTurn(question, null, false));
+                vlmExecutor.execute(() -> runGemmaTurn(finalQ, null, false));
             }
         });
 
-        micButton.setOnClickListener(v -> {
+        if (micButton != null) micButton.setOnClickListener(v -> {
             if (isListening) {
                 stopListening();
-                return;
-            }
-
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                startListening();
             } else {
-                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO);
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    startListening();
+                } else {
+                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO);
+                }
             }
         });
     }
+
+    private void showCameraState() {
+        if (cameraStateContainer != null) cameraStateContainer.setVisibility(View.VISIBLE);
+        if (resultStateContainer != null) resultStateContainer.setVisibility(View.GONE);
+        if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.GONE);
+        if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
+        if (exportStateContainer != null) exportStateContainer.setVisibility(View.GONE);
+    }
+
+    private void showLoadingState() {
+        if (cameraStateContainer != null) cameraStateContainer.setVisibility(View.GONE);
+        if (resultStateContainer != null) resultStateContainer.setVisibility(View.GONE);
+        if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.VISIBLE);
+        if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
+        if (exportStateContainer != null) exportStateContainer.setVisibility(View.GONE);
+    }
+
+    private void showResultState() {
+        if (cameraStateContainer != null) cameraStateContainer.setVisibility(View.GONE);
+        if (resultStateContainer != null) resultStateContainer.setVisibility(View.VISIBLE);
+        if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.GONE);
+        if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
+        if (exportStateContainer != null) exportStateContainer.setVisibility(View.GONE);
+    }
+
+    private void showErrorState(String errorMsg) {
+        if (cameraStateContainer != null) cameraStateContainer.setVisibility(View.GONE);
+        if (resultStateContainer != null) resultStateContainer.setVisibility(View.GONE);
+        if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.GONE);
+        if (errorStateContainer != null) errorStateContainer.setVisibility(View.VISIBLE);
+        if (exportStateContainer != null) exportStateContainer.setVisibility(View.GONE);
+        if (errorText != null) errorText.setText(errorMsg);
+    }
+    
+    private void showExportState() {
+        if (cameraStateContainer != null) cameraStateContainer.setVisibility(View.GONE);
+        if (resultStateContainer != null) resultStateContainer.setVisibility(View.GONE);
+        if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.GONE);
+        if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
+        if (exportStateContainer != null) exportStateContainer.setVisibility(View.VISIBLE);
+    }
+
+    private void copyResultToClipboard() {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        String textToCopy = "World Lens\nAnswer: " + currentFullAnswer + "\nMorse Summary: " + currentMorseSummary + "\nMorse Code: " + currentMorseCode;
+        ClipData clip = ClipData.newPlainText("World Lens Result", textToCopy);
+        clipboard.setPrimaryClip(clip);
+        Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show();
+    }
+
+    private void exportReportToMarkdown() {
+        copyResultToClipboard();
+        Toast.makeText(this, "Export simulated (Copied to clipboard)", Toast.LENGTH_SHORT).show();
+    }
+
+    private void playMorseCode() {
+        if (currentMorseSummary.isEmpty()) return;
+        if (playMorseButton != null) playMorseButton.setEnabled(false);
+        if (stopMorseButton != null) stopMorseButton.setVisibility(View.VISIBLE);
+        morseSoundPlayer.playMorse(currentMorseSummary, new MorseSoundPlayer.PlaybackCallback() {
+            @Override
+            public void onPlaybackStarted(String text, long durationMs) {}
+            @Override
+            public void onPlaybackFinished() {
+                runOnUiThread(() -> {
+                    if (playMorseButton != null) playMorseButton.setEnabled(true);
+                    if (stopMorseButton != null) stopMorseButton.setVisibility(View.GONE);
+                });
+            }
+            @Override
+            public void onError(String err) {}
+        });
+    }
+
+    private void stopMorseCode() {
+        if (morseSoundPlayer != null) morseSoundPlayer.stop();
+        if (playMorseButton != null) playMorseButton.setEnabled(true);
+        if (stopMorseButton != null) stopMorseButton.setVisibility(View.GONE);
+    }
+
 
     private void startListening() {
         if (isListening) {
@@ -305,7 +470,7 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onReadyForSpeech(Bundle params) {
                         isListening = true;
-                        micButton.setText("⏹");
+                        // micButton text handled by XML
                         resultText.setText("Listening (offline)... Speak your question now.");
                     }
 
@@ -329,7 +494,7 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onError(int error) {
                         isListening = false;
-                        micButton.setText("🎤");
+                        // micButton text handled by XML
                         String errorMsg;
                         switch (error) {
                             case SpeechRecognizer.ERROR_NO_MATCH:
@@ -361,7 +526,7 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onResults(Bundle results) {
                         isListening = false;
-                        micButton.setText("🎤");
+                        // micButton text handled by XML
                         ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                         if (matches != null && !matches.isEmpty()) {
                             String recognizedText = matches.get(0);
@@ -391,12 +556,12 @@ public class MainActivity extends AppCompatActivity {
 
             speechRecognizer.startListening(intent);
             isListening = true;
-            micButton.setText("⏹");
+            // micButton text handled by XML
             resultText.setText("Listening (offline)... Speak your question now.");
 
         } catch (Exception e) {
             isListening = false;
-            micButton.setText("🎤");
+            // micButton text handled by XML
             resultText.setText("Failed to start speech recognition: " + e.getMessage());
         }
     }
@@ -408,7 +573,7 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {}
         }
         isListening = false;
-        micButton.setText("🎤");
+        // micButton text handled by XML
     }
 
     private void initHaptics() {
@@ -695,7 +860,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 askButton.setText("ASK WORLD LENS");
                 askButton.setEnabled(true);
-                newScanButton.setEnabled(true);
+                if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
                 loadingProgressBar.setVisibility(View.GONE);
                 if (!isCustomQuestionAsked) {
                     resultText.setText("Local Gemma-4-E2B-it ready (GPU)!\nPoint camera at an object and ask a question.");
@@ -750,7 +915,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 askButton.setText("ASK WORLD LENS");
                 askButton.setEnabled(true);
-                newScanButton.setEnabled(true);
+                if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
                 loadingProgressBar.setVisibility(View.GONE);
                 if (!isCustomQuestionAsked) {
                     resultText.setText("Local Gemma-4-E2B-it ready (CPU fallback)!\nPoint camera at an object and ask a question.");
@@ -837,7 +1002,8 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     questionInput.setText("");
                     askButton.setText("ASK WORLD LENS");
-                    resultText.setText("Ready for new scan.\nPoint camera at an object and ask a question.");
+                    showCameraState();
+                    if (resultText != null) resultText.setText("Ready for new scan.\nPoint camera at an object and ask a question.");
                     Toast.makeText(this, "New scan session started.", Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception e) {
@@ -854,6 +1020,8 @@ public class MainActivity extends AppCompatActivity {
                 gemmaConversation = gemmaEngine.createConversation(new ConversationConfig());
             }
 
+            String modifiedQuestion = question + "\n\nPlease provide your response exactly in the following format:\n\nFULL ANSWER:\n[your detailed answer here]\n\nMORSE SUMMARY TEXT:\n[a very short summary of max 7 words]";
+
             final StringBuilder accumulatedResponse = new StringBuilder();
 
             MessageCallback callback = new MessageCallback() {
@@ -862,7 +1030,7 @@ public class MainActivity extends AppCompatActivity {
                     String chunk = extractTextFromMessage(message);
                     accumulatedResponse.append(chunk);
                     runOnUiThread(() -> {
-                        resultText.setText(accumulatedResponse.toString());
+                        if (resultText != null) resultText.setText("Thinking...");
                     });
                 }
 
@@ -870,14 +1038,45 @@ public class MainActivity extends AppCompatActivity {
                 public void onDone() {
                     isInferenceRunning = false;
                     isFirstTurnOfScan = false;
+                    
+                    String rawResponse = accumulatedResponse.toString();
+                    currentFullAnswer = rawResponse;
+                    currentMorseSummary = rawResponse;
+                    currentMorseCode = "";
+                    
+                    int fullIndex = rawResponse.indexOf("FULL ANSWER:");
+                    int summaryIndex = rawResponse.indexOf("MORSE SUMMARY TEXT:");
+                    
+                    if (fullIndex != -1 && summaryIndex != -1 && summaryIndex > fullIndex) {
+                        currentFullAnswer = rawResponse.substring(fullIndex + 12, summaryIndex).trim();
+                        currentMorseSummary = rawResponse.substring(summaryIndex + 19).trim();
+                    } else {
+                        String upperRaw = rawResponse.toUpperCase();
+                        int fIdx = upperRaw.indexOf("FULL ANSWER");
+                        int sIdx = upperRaw.indexOf("MORSE SUMMARY");
+                        if (fIdx != -1 && sIdx != -1 && sIdx > fIdx) {
+                            currentFullAnswer = rawResponse.substring(fIdx + 11, sIdx).replace(":", "").trim();
+                            currentMorseSummary = rawResponse.substring(sIdx + 13).replace(":", "").replace("TEXT", "").trim();
+                        }
+                    }
+                    
+                    currentMorseCode = MorseEncoder.textToMorseString(currentMorseSummary);
+                    
                     triggerHaptic(HapticEvent.ANSWER_COMPLETED);
-                    speakText(accumulatedResponse.toString());
+                    speakText(currentFullAnswer);
+                    
                     runOnUiThread(() -> {
-                        loadingProgressBar.setVisibility(View.GONE);
-                        askButton.setEnabled(true);
-                        newScanButton.setEnabled(true);
-                        askButton.setText("ASK FOLLOW-UP");
-                        questionInput.setText("");
+                        showResultState();
+                        if (loadingProgressBar != null) loadingProgressBar.setVisibility(View.GONE);
+                        if (askButton != null) askButton.setEnabled(true);
+                        if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
+                        if (askButton != null) askButton.setText("ASK FOLLOW-UP");
+                        if (questionInput != null) questionInput.setText("");
+                        
+                        if (resultText != null) resultText.setText(currentFullAnswer);
+                        if (morseSummaryText != null) morseSummaryText.setText(currentMorseSummary);
+                        if (morseCodeText != null) morseCodeText.setText(currentMorseCode);
+                        if (questionEchoText != null) questionEchoText.setText(lastAskedQuestion);
                     });
                 }
 
@@ -886,43 +1085,39 @@ public class MainActivity extends AppCompatActivity {
                     isInferenceRunning = false;
                     triggerHaptic(HapticEvent.ERROR);
                     runOnUiThread(() -> {
-                        loadingProgressBar.setVisibility(View.GONE);
-                        askButton.setEnabled(true);
-                        newScanButton.setEnabled(true);
-                        resultText.setText("Inference error:\n" + throwable.getMessage());
+                        showErrorState("Inference error:\n" + throwable.getMessage());
+                        if (askButton != null) askButton.setEnabled(true);
+                        if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
                     });
                 }
             };
 
             if (isFirstTurn && bitmap != null) {
-                // Write image to a temporary cache file for LiteRT-LM
                 File cacheImage = new File(getCacheDir(), "vlm_input.jpg");
                 try (FileOutputStream fos = new FileOutputStream(cacheImage)) {
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 90, fos);
                 }
 
-                // Create multimodal message (Image + Question) for Turn 1
                 Content imageContent = new Content.ImageFile(cacheImage.getAbsolutePath());
-                Content textContent = new Content.Text(question);
+                Content textContent = new Content.Text(modifiedQuestion);
                 Contents contents = Contents.Companion.of(imageContent, textContent);
 
                 gemmaConversation.sendMessageAsync(contents, callback);
             } else {
-                // Follow-up message sends text only to the active conversation
-                gemmaConversation.sendMessageAsync(question, callback);
+                gemmaConversation.sendMessageAsync(modifiedQuestion, callback);
             }
 
         } catch (Exception e) {
             isInferenceRunning = false;
             triggerHaptic(HapticEvent.ERROR);
             runOnUiThread(() -> {
-                loadingProgressBar.setVisibility(View.GONE);
-                askButton.setEnabled(true);
-                newScanButton.setEnabled(true);
-                resultText.setText("Failed to process question:\n" + e.getMessage());
+                showErrorState("Failed to process question:\n" + e.getMessage());
+                if (askButton != null) askButton.setEnabled(true);
+                if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
             });
         }
     }
+
 
     private String extractTextFromMessage(Message message) {
         if (message == null || message.getContents() == null) {
@@ -951,7 +1146,7 @@ public class MainActivity extends AppCompatActivity {
                 speechRecognizer.cancel();
             } catch (Exception ignored) {}
             isListening = false;
-            micButton.setText("🎤");
+            // micButton text handled by XML
         }
         if (vibrator != null) {
             try {

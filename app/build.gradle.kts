@@ -38,6 +38,10 @@ android {
             pickFirsts += "**/*.so"
         }
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
