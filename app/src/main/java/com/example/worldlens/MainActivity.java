@@ -1,45 +1,43 @@
 package com.example.worldlens;
 
 import android.Manifest;
-import android.content.pm.PackageManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
+import android.graphics.Typeface;
 import android.net.Uri;
-import android.os.Bundle;
 import android.os.Build;
-import android.os.VibrationEffect;
-import android.os.Vibrator;
-import android.os.VibratorManager;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
+import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
-import android.widget.ImageButton;
-import android.content.ClipboardManager;
-import android.content.ClipData;
-import android.content.Intent;
-import android.net.Uri;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import com.example.worldlens.morse.MorseEncoder;
-import com.example.worldlens.morse.MorseSoundPlayer;
-
 import android.widget.EditText;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.SwitchCompat;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
@@ -47,7 +45,11 @@ import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
+import androidx.core.widget.NestedScrollView;
 
+import com.example.worldlens.morse.MorseEncoder;
+import com.example.worldlens.morse.MorseSoundPlayer;
+import com.example.worldlens.ui.RecordingWaveformView;
 import com.google.ai.edge.litertlm.Backend;
 import com.google.ai.edge.litertlm.Content;
 import com.google.ai.edge.litertlm.Contents;
@@ -78,40 +80,99 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
+    public enum UiState {
+        INITIALIZING,
+        READY,
+        LISTENING,
+        PROCESSING,
+        STREAMING,
+        SPEAKING,
+        MORSE_PLAYING,
+        ERROR
+    }
+
+    private UiState currentUiState = UiState.INITIALIZING;
+
     private ImageClassifier imageClassifier;
-    private TextView resultText;
     private PreviewView viewFinder;
-    private EditText questionInput;
-    private ImageButton micButton;
-    private Button askButton;
-    private ProgressBar loadingProgressBar;
     private ExecutorService cameraExecutor;
 
-    // Export UI
-    private View copyResultCard;
-    private View exportReportCard;
+    // Header & Live Status
+    private Button newChatTopButton;
+    private TextView liveStatusIndicator;
+    private ImageButton settingsButton;
 
-    // UI States & Navigation
-    private View cameraStateContainer;
-    private View resultStateContainer;
+    // Loading & Error states
     private View loadingStateContainer;
+    private ProgressBar loadingProgressBar;
     private View errorStateContainer;
-    private View exportStateContainer;
-    
     private TextView errorText;
     private Button retryButton;
-    private TextView questionEchoText;
-    private Button readAnswerButton;
-    private Button stopMorseButton;
+
+    // Response Preview Card
+    private View responsePreviewCard;
+    private TextView resultText;
+    private TextView streamingIndicator;
+    private TextView speakingIndicator;
+    private TextView openChatFromPreview;
+
+    // Bottom Deck & Composer
+    private View normalComposerLayout;
+    private EditText questionInput;
+    private ImageButton sendQuestionButton;
+    private View listeningComposerLayout;
+    private RecordingWaveformView waveformView;
     private Button playMorseButton;
-    private Button openExportStateButton;
-    private TextView morseSummaryText;
-    private TextView morseCodeText;
-    
-    private View backToHomeButton;
-    private View deleteScanButton;
-    private View backToResultButton;
-    private Button newScanButtonFromExport;
+    private Button stopMorseButton;
+    private ImageButton micButton;
+    private Button moreActionsButton;
+
+    // Chat Panel
+    private View chatPanelContainer;
+    private ImageButton closeChatButton;
+    private Button newChatPanelButton;
+    private NestedScrollView chatScrollView;
+    private LinearLayout chatMessagesLayout;
+    private EditText chatQuestionInput;
+    private ImageButton chatMicButton;
+    private ImageButton chatSendButton;
+
+    // Conversation History Model
+    public static class ChatTurn {
+        public final String question;
+        public String answer;
+        public String morseSummary;
+        public String morseCode;
+
+        public ChatTurn(String question, String answer, String morseSummary, String morseCode) {
+            this.question = question;
+            this.answer = answer;
+            this.morseSummary = morseSummary;
+            this.morseCode = morseCode;
+        }
+    }
+    private final List<ChatTurn> conversationHistory = new ArrayList<>();
+
+    // Streaming Dots Animation Handler
+    private final Handler streamingDotsHandler = new Handler(Looper.getMainLooper());
+    private int streamingDotCount = 0;
+    private final Runnable streamingDotsRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (currentUiState == UiState.STREAMING || currentUiState == UiState.PROCESSING) {
+                streamingDotCount = (streamingDotCount % 3) + 1;
+                StringBuilder sb = new StringBuilder("  ");
+                for (int i = 0; i < streamingDotCount; i++) sb.append("•");
+                if (streamingIndicator != null) {
+                    streamingIndicator.setText(sb.toString());
+                    streamingIndicator.setVisibility(View.VISIBLE);
+                }
+                streamingDotsHandler.postDelayed(this, 350);
+            } else {
+                if (streamingIndicator != null) streamingIndicator.setVisibility(View.GONE);
+            }
+        }
+    };
 
     // Local Gemma VLM engine, conversation session, and background executor
     private Engine gemmaEngine;
@@ -123,8 +184,7 @@ public class MainActivity extends AppCompatActivity {
     private volatile boolean isGemmaReady = false;
     private File gemmaModelFile = null;
 
-    // Configurable backends (GPU default with automatic CPU fallback)
-    private Backend llmBackend = new Backend.GPU();
+    // Vision Acceleration Backend (GPU default with automatic CPU fallback)
     private Backend visionBackend = new Backend.GPU();
 
     private boolean isCustomQuestionAsked = false;
@@ -133,15 +193,11 @@ public class MainActivity extends AppCompatActivity {
     private SpeechRecognizer speechRecognizer;
     private boolean isListening = false;
 
-    // Accessibility Mode & Haptics
-    private TextView accessibilityLabel;
-    private SwitchCompat accessibilitySwitch;
-    private boolean isAccessibilityModeEnabled = false;
-    private Vibrator vibrator;
-
     // Text to Speech
     private TextToSpeech textToSpeech;
     private boolean isTtsReady = false;
+    private boolean isTtsSpeaking = false;
+    private StreamingTtsController streamingTtsController;
 
     // Morse Audio Player
     private MorseSoundPlayer morseSoundPlayer;
@@ -151,14 +207,6 @@ public class MainActivity extends AppCompatActivity {
     private String currentFullAnswer = "";
     private String currentMorseSummary = "";
     private String currentMorseCode = "";
-
-    // Haptic Feedback Event Types
-    private enum HapticEvent {
-        PROCESSING_STARTED,
-        ANSWER_COMPLETED,
-        ERROR,
-        NEW_SCAN
-    }
 
     // Handles the camera permission request popup
     private final ActivityResultLauncher<String> requestPermissionLauncher =
@@ -178,7 +226,9 @@ public class MainActivity extends AppCompatActivity {
                     startListening();
                 } else {
                     Toast.makeText(this, "Microphone permission is required for voice input.", Toast.LENGTH_LONG).show();
-                    resultText.setText("Microphone permission denied.");
+                    if (resultText != null) {
+                        resultText.setText("Microphone permission denied.");
+                    }
                 }
             });
 
@@ -198,58 +248,75 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         // Bind UI Elements
-        resultText = findViewById(R.id.resultText);
         viewFinder = findViewById(R.id.viewFinder);
-        questionInput = findViewById(R.id.questionInput);
-        micButton = findViewById(R.id.micButton);
-        askButton = findViewById(R.id.askButton);
-        loadingProgressBar = findViewById(R.id.loadingProgressBar);
-        accessibilityLabel = findViewById(R.id.accessibilityLabel);
-        accessibilitySwitch = findViewById(R.id.accessibilitySwitch);
-        
-        // Find these if they exist in XML
-        playMorseButton = findViewById(R.id.playMorseButton);
-        morseSummaryText = findViewById(R.id.morseSummaryText);
-        morseCodeText = findViewById(R.id.morseCodeText);
-        copyResultCard = findViewById(R.id.copyResultCard);
-        exportReportCard = findViewById(R.id.exportReportCard);
-        
-        cameraStateContainer = findViewById(R.id.cameraStateContainer);
-        resultStateContainer = findViewById(R.id.resultStateContainer);
+        newChatTopButton = findViewById(R.id.newChatTopButton);
+        liveStatusIndicator = findViewById(R.id.liveStatusIndicator);
+        settingsButton = findViewById(R.id.settingsButton);
+
         loadingStateContainer = findViewById(R.id.loadingStateContainer);
+        loadingProgressBar = findViewById(R.id.loadingProgressBar);
         errorStateContainer = findViewById(R.id.errorStateContainer);
-        exportStateContainer = findViewById(R.id.exportStateContainer);
-        
         errorText = findViewById(R.id.errorText);
         retryButton = findViewById(R.id.retryButton);
-        questionEchoText = findViewById(R.id.questionEchoText);
-        readAnswerButton = findViewById(R.id.readAnswerButton);
-        stopMorseButton = findViewById(R.id.stopMorseButton);
-        openExportStateButton = findViewById(R.id.openExportStateButton);
-        
-        backToHomeButton = findViewById(R.id.backToHomeButton);
-        deleteScanButton = findViewById(R.id.deleteScanButton);
-        backToResultButton = findViewById(R.id.backToResultButton);
-        newScanButtonFromExport = findViewById(R.id.newScanButtonFromExport);
 
+        responsePreviewCard = findViewById(R.id.responsePreviewCard);
+        resultText = findViewById(R.id.resultText);
+        streamingIndicator = findViewById(R.id.streamingIndicator);
+        speakingIndicator = findViewById(R.id.speakingIndicator);
+        openChatFromPreview = findViewById(R.id.openChatFromPreview);
+
+        normalComposerLayout = findViewById(R.id.normalComposerLayout);
+        questionInput = findViewById(R.id.questionInput);
+        sendQuestionButton = findViewById(R.id.sendQuestionButton);
+        listeningComposerLayout = findViewById(R.id.listeningComposerLayout);
+        waveformView = findViewById(R.id.waveformView);
+
+        playMorseButton = findViewById(R.id.playMorseButton);
+        stopMorseButton = findViewById(R.id.stopMorseButton);
+        micButton = findViewById(R.id.micButton);
+        moreActionsButton = findViewById(R.id.moreActionsButton);
+
+        // Bind Chat Panel Views
+        chatPanelContainer = findViewById(R.id.chatPanelContainer);
+        closeChatButton = findViewById(R.id.closeChatButton);
+        newChatPanelButton = findViewById(R.id.newChatPanelButton);
+        chatScrollView = findViewById(R.id.chatScrollView);
+        chatMessagesLayout = findViewById(R.id.chatMessagesLayout);
+        chatQuestionInput = findViewById(R.id.chatQuestionInput);
+        chatMicButton = findViewById(R.id.chatMicButton);
+        chatSendButton = findViewById(R.id.chatSendButton);
+
+        // Modern OnBackPressedDispatcher handling (migrated from deprecated onBackPressed)
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (chatPanelContainer != null && chatPanelContainer.getVisibility() == View.VISIBLE) {
+                    closeChatPanel();
+                } else {
+                    setEnabled(false);
+                    getOnBackPressedDispatcher().onBackPressed();
+                }
+            }
+        });
+
+        // Initialize Morse Audio Player and Text-to-Speech
         morseSoundPlayer = new MorseSoundPlayer(this);
-        // Initialize Haptic Engine and Text-to-Speech
-        initHaptics();
         initTextToSpeech();
 
-        // Background thread for camera image analysis
+        // Background threads
         cameraExecutor = Executors.newSingleThreadExecutor();
-
-        // Background thread for local Gemma-4-E2B-it VLM operations
         vlmExecutor = Executors.newSingleThreadExecutor();
 
-        // Initialize UI Shell Button Listeners
+        // Set initial state
+        applyUiState(UiState.INITIALIZING);
+
+        // Initialize UI Button Listeners
         setupUIListeners();
 
-        // 1. Initialize the local EfficientNet model
+        // 1. Initialize local EfficientNet model
         setupLocalAI();
 
-        // 2. Initialize the local Gemma-4-E2B-it VLM on background thread
+        // 2. Initialize local Gemma-4-E2B-it VLM on background thread
         initGemmaVlm();
 
         // 3. Check and request camera permission
@@ -260,152 +327,218 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void setupUIListeners() {
-        if (accessibilitySwitch != null) {
-            accessibilitySwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                isAccessibilityModeEnabled = isChecked;
-                accessibilityLabel.setText(isChecked ? "[ Accessibility Mode: ON ]" : "[ Accessibility Mode: OFF ]");
-                if (isChecked) {
-                    if (resultText != null) resultText.setTextSize(18);
-                    triggerHaptic(HapticEvent.PROCESSING_STARTED);
-                    Toast.makeText(this, "Accessibility Mode enabled (Haptics ON)", Toast.LENGTH_SHORT).show();
-                } else {
-                    if (resultText != null) resultText.setTextSize(15);
-                    if (vibrator != null) {
-                        vibrator.cancel();
-                    }
-                    Toast.makeText(this, "Accessibility Mode disabled", Toast.LENGTH_SHORT).show();
-                }
-            });
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            startCamera();
         }
+    }
 
-        if (newScanButtonFromExport != null) newScanButtonFromExport.setOnClickListener(v -> resetConversation());
-        if (openExportStateButton != null) openExportStateButton.setOnClickListener(v -> showExportState());
-        if (backToHomeButton != null) backToHomeButton.setOnClickListener(v -> resetConversation());
-        if (deleteScanButton != null) deleteScanButton.setOnClickListener(v -> resetConversation());
-        if (backToResultButton != null) backToResultButton.setOnClickListener(v -> showResultState());
-        if (copyResultCard != null) copyResultCard.setOnClickListener(v -> copyResultToClipboard());
-        if (exportReportCard != null) exportReportCard.setOnClickListener(v -> exportReportToMarkdown());
+    private void setupUIListeners() {
         if (playMorseButton != null) playMorseButton.setOnClickListener(v -> playMorseCode());
         if (stopMorseButton != null) stopMorseButton.setOnClickListener(v -> stopMorseCode());
 
-        if (askButton != null) askButton.setOnClickListener(v -> {
-            if (isListening) {
-                stopListening();
-            }
+        // Wireframe Top Header: New Chat & Settings
+        if (newChatTopButton != null) newChatTopButton.setOnClickListener(v -> resetConversation());
+        if (newChatPanelButton != null) newChatPanelButton.setOnClickListener(v -> resetConversation());
+        if (settingsButton != null) settingsButton.setOnClickListener(v -> showSettingsDialog());
 
-            if (isInferenceRunning) {
-                Toast.makeText(this, "Thinking... please wait for the current answer.", Toast.LENGTH_SHORT).show();
-                return;
-            }
+        // Wireframe Quick Actions & More Dropdown
+        if (moreActionsButton != null) {
+            moreActionsButton.setOnClickListener(v -> showMoreActionsMenu(moreActionsButton));
+        }
 
-            if (gemmaModelFile == null || (!isGemmaReady && !isGemmaLoading)) {
-                modelPickerLauncher.launch(new String[]{"*/*"});
-                return;
-            }
+        // Conversational Preview Card -> Open Chat
+        if (responsePreviewCard != null) {
+            responsePreviewCard.setOnClickListener(v -> openChatPanel());
+        }
+        if (openChatFromPreview != null) {
+            openChatFromPreview.setOnClickListener(v -> openChatPanel());
+        }
+        if (closeChatButton != null) {
+            closeChatButton.setOnClickListener(v -> closeChatPanel());
+        }
 
-            if (isGemmaLoading) {
-                Toast.makeText(this, "Gemma model is still initializing. Please wait...", Toast.LENGTH_SHORT).show();
-                return;
-            }
+        // Primary Conversational Composer Send Buttons
+        if (sendQuestionButton != null) {
+            sendQuestionButton.setOnClickListener(v -> submitQuestion(questionInput != null ? questionInput.getText().toString() : ""));
+        }
+        if (chatSendButton != null) {
+            chatSendButton.setOnClickListener(v -> submitQuestion(chatQuestionInput != null ? chatQuestionInput.getText().toString() : ""));
+        }
 
-            if (!isGemmaReady || gemmaEngine == null) {
-                Toast.makeText(this, "Model not ready. Tap to select model file.", Toast.LENGTH_LONG).show();
-                modelPickerLauncher.launch(new String[]{"*/*"});
-                return;
-            }
-
-            String question = questionInput.getText().toString().trim();
-            if (question.isEmpty()) {
-                question = "Describe this image in detail.";
-            } else {
-                isCustomQuestionAsked = true;
-            }
-
-            lastAskedQuestion = question;
-            showLoadingState();
-
-            isInferenceRunning = true;
-            if (loadingProgressBar != null) loadingProgressBar.setVisibility(View.VISIBLE);
-            askButton.setEnabled(false);
-            if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(false);
-            stopSpeaking();
-            stopMorseCode();
-            triggerHaptic(HapticEvent.PROCESSING_STARTED);
-
-            String finalQ = question;
-            runOnUiThread(() -> {
-                askButton.setText("ASK WORLD LENS");
-                askButton.setEnabled(true);
-                if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
+        // IME Action Send on Enter Key for Main Composer
+        if (questionInput != null) {
+            questionInput.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
+                    submitQuestion(questionInput.getText().toString());
+                    return true;
+                }
+                return false;
             });
+        }
 
-            if (isFirstTurnOfScan) {
-                Bitmap capturedBitmap = viewFinder.getBitmap();
-                if (capturedBitmap == null) {
-                    isInferenceRunning = false;
-                    showErrorState("Failed to capture image from camera.");
-                    return;
+        // IME Action Send on Enter Key for Chat Panel Composer
+        if (chatQuestionInput != null) {
+            chatQuestionInput.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
+                    submitQuestion(chatQuestionInput.getText().toString());
+                    return true;
                 }
-                final Bitmap imageForInference = capturedBitmap;
-                vlmExecutor.execute(() -> runGemmaTurn(finalQ, imageForInference, true));
-            } else {
-                vlmExecutor.execute(() -> runGemmaTurn(finalQ, null, false));
+                return false;
+            });
+        }
+
+        // Retry Button
+        if (retryButton != null) {
+            retryButton.setOnClickListener(v -> {
+                if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
+                submitQuestion(lastAskedQuestion);
+            });
+        }
+
+        // Press-and-Hold Microphone Interaction with Touch Scaling Animation
+        View.OnTouchListener micTouchListener = (v, event) -> {
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    if (isInferenceRunning) {
+                        Toast.makeText(this, "Thinking... please wait for current answer.", Toast.LENGTH_SHORT).show();
+                        return true;
+                    }
+                    v.animate().scaleX(1.15f).scaleY(1.15f).setDuration(150).start();
+                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        startListening();
+                    } else {
+                        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO);
+                    }
+                    return true;
+
+                case MotionEvent.ACTION_MOVE:
+                    // Maintain recording state
+                    return true;
+
+                case MotionEvent.ACTION_UP:
+                    v.performClick();
+                    v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start();
+                    if (isListening) {
+                        stopListening();
+                    }
+                    return true;
+
+                case MotionEvent.ACTION_CANCEL:
+                    v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start();
+                    if (isListening) {
+                        stopListening();
+                    }
+                    return true;
+            }
+            return false;
+        };
+
+        if (micButton != null) micButton.setOnTouchListener(micTouchListener);
+        if (chatMicButton != null) chatMicButton.setOnTouchListener(micTouchListener);
+    }
+
+    public void applyUiState(UiState state) {
+        currentUiState = state;
+        runOnUiThread(() -> {
+            switch (state) {
+                case INITIALIZING:
+                    if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.VISIBLE);
+                    if (liveStatusIndicator != null) {
+                        liveStatusIndicator.setText("PREPARING");
+                        liveStatusIndicator.setTextColor(ContextCompat.getColor(this, R.color.wl_text_secondary));
+                    }
+                    if (sendQuestionButton != null) sendQuestionButton.setEnabled(false);
+                    if (chatSendButton != null) chatSendButton.setEnabled(false);
+                    stopStreamingAnimation();
+                    break;
+
+                case READY:
+                    if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.GONE);
+                    if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
+                    if (liveStatusIndicator != null) {
+                        liveStatusIndicator.setText("● LIVE");
+                        liveStatusIndicator.setTextColor(ContextCompat.getColor(this, R.color.ink_black));
+                    }
+                    if (normalComposerLayout != null) normalComposerLayout.setVisibility(View.VISIBLE);
+                    if (listeningComposerLayout != null) listeningComposerLayout.setVisibility(View.GONE);
+                    if (waveformView != null) waveformView.stopListening();
+                    if (sendQuestionButton != null) sendQuestionButton.setEnabled(true);
+                    if (chatSendButton != null) chatSendButton.setEnabled(true);
+                    if (speakingIndicator != null) speakingIndicator.setVisibility(View.GONE);
+                    if (playMorseButton != null) playMorseButton.setVisibility(View.VISIBLE);
+                    if (stopMorseButton != null) stopMorseButton.setVisibility(View.GONE);
+                    stopStreamingAnimation();
+                    break;
+
+                case LISTENING:
+                    if (normalComposerLayout != null) normalComposerLayout.setVisibility(View.GONE);
+                    if (listeningComposerLayout != null) listeningComposerLayout.setVisibility(View.VISIBLE);
+                    if (waveformView != null) waveformView.startListening();
+                    if (sendQuestionButton != null) sendQuestionButton.setEnabled(false);
+                    if (chatSendButton != null) chatSendButton.setEnabled(false);
+                    stopStreamingAnimation();
+                    break;
+
+                case PROCESSING:
+                    if (normalComposerLayout != null) normalComposerLayout.setVisibility(View.VISIBLE);
+                    if (listeningComposerLayout != null) listeningComposerLayout.setVisibility(View.GONE);
+                    if (waveformView != null) waveformView.stopListening();
+                    if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.GONE);
+                    if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
+                    if (resultText != null) resultText.setText("Thinking...");
+                    if (sendQuestionButton != null) sendQuestionButton.setEnabled(false);
+                    if (chatSendButton != null) chatSendButton.setEnabled(false);
+                    startStreamingAnimation();
+                    break;
+
+                case STREAMING:
+                    if (sendQuestionButton != null) sendQuestionButton.setEnabled(false);
+                    if (chatSendButton != null) chatSendButton.setEnabled(false);
+                    if (speakingIndicator != null) {
+                        speakingIndicator.setVisibility(isTtsSpeaking ? View.VISIBLE : View.GONE);
+                    }
+                    startStreamingAnimation();
+                    break;
+
+                case SPEAKING:
+                    if (speakingIndicator != null) speakingIndicator.setVisibility(View.VISIBLE);
+                    break;
+
+                case MORSE_PLAYING:
+                    if (playMorseButton != null) playMorseButton.setVisibility(View.GONE);
+                    if (stopMorseButton != null) stopMorseButton.setVisibility(View.VISIBLE);
+                    break;
+
+                case ERROR:
+                    if (errorStateContainer != null) errorStateContainer.setVisibility(View.VISIBLE);
+                    if (normalComposerLayout != null) normalComposerLayout.setVisibility(View.VISIBLE);
+                    if (listeningComposerLayout != null) listeningComposerLayout.setVisibility(View.GONE);
+                    if (waveformView != null) waveformView.stopListening();
+                    if (sendQuestionButton != null) sendQuestionButton.setEnabled(true);
+                    if (chatSendButton != null) chatSendButton.setEnabled(true);
+                    stopStreamingAnimation();
+                    if (speakingIndicator != null) speakingIndicator.setVisibility(View.GONE);
+                    break;
             }
         });
-
-        if (micButton != null) micButton.setOnClickListener(v -> {
-            if (isListening) {
-                stopListening();
-            } else {
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                    startListening();
-                } else {
-                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO);
-                }
-            }
-        });
     }
 
-    private void showCameraState() {
-        if (cameraStateContainer != null) cameraStateContainer.setVisibility(View.VISIBLE);
-        if (resultStateContainer != null) resultStateContainer.setVisibility(View.GONE);
-        if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.GONE);
-        if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
-        if (exportStateContainer != null) exportStateContainer.setVisibility(View.GONE);
+    private void startStreamingAnimation() {
+        streamingDotsHandler.removeCallbacks(streamingDotsRunnable);
+        streamingDotsHandler.post(streamingDotsRunnable);
     }
 
-    private void showLoadingState() {
-        if (cameraStateContainer != null) cameraStateContainer.setVisibility(View.GONE);
-        if (resultStateContainer != null) resultStateContainer.setVisibility(View.GONE);
-        if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.VISIBLE);
-        if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
-        if (exportStateContainer != null) exportStateContainer.setVisibility(View.GONE);
-    }
-
-    private void showResultState() {
-        if (cameraStateContainer != null) cameraStateContainer.setVisibility(View.GONE);
-        if (resultStateContainer != null) resultStateContainer.setVisibility(View.VISIBLE);
-        if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.GONE);
-        if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
-        if (exportStateContainer != null) exportStateContainer.setVisibility(View.GONE);
+    private void stopStreamingAnimation() {
+        streamingDotsHandler.removeCallbacks(streamingDotsRunnable);
+        if (streamingIndicator != null) streamingIndicator.setVisibility(View.GONE);
     }
 
     private void showErrorState(String errorMsg) {
-        if (cameraStateContainer != null) cameraStateContainer.setVisibility(View.GONE);
-        if (resultStateContainer != null) resultStateContainer.setVisibility(View.GONE);
-        if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.GONE);
-        if (errorStateContainer != null) errorStateContainer.setVisibility(View.VISIBLE);
-        if (exportStateContainer != null) exportStateContainer.setVisibility(View.GONE);
         if (errorText != null) errorText.setText(errorMsg);
-    }
-    
-    private void showExportState() {
-        if (cameraStateContainer != null) cameraStateContainer.setVisibility(View.GONE);
-        if (resultStateContainer != null) resultStateContainer.setVisibility(View.GONE);
-        if (loadingStateContainer != null) loadingStateContainer.setVisibility(View.GONE);
-        if (errorStateContainer != null) errorStateContainer.setVisibility(View.GONE);
-        if (exportStateContainer != null) exportStateContainer.setVisibility(View.VISIBLE);
+        applyUiState(UiState.ERROR);
     }
 
     private void copyResultToClipboard() {
@@ -417,61 +550,59 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void exportReportToMarkdown() {
-        copyResultToClipboard();
-        Toast.makeText(this, "Export simulated (Copied to clipboard)", Toast.LENGTH_SHORT).show();
+        String textToCopy = "# World Lens Scan Report\n\n**Question:**\n" + lastAskedQuestion + "\n\n**Answer:**\n" + currentFullAnswer + "\n\n**Morse Summary:**\n" + currentMorseSummary + "\n\n**Morse Code:**\n`" + currentMorseCode + "`";
+        Intent sendIntent = new Intent();
+        sendIntent.setAction(Intent.ACTION_SEND);
+        sendIntent.putExtra(Intent.EXTRA_TEXT, textToCopy);
+        sendIntent.setType("text/plain");
+        Intent shareIntent = Intent.createChooser(sendIntent, null);
+        startActivity(shareIntent);
     }
 
     private void playMorseCode() {
-        if (currentMorseSummary.isEmpty()) return;
-        if (playMorseButton != null) playMorseButton.setEnabled(false);
-        if (stopMorseButton != null) stopMorseButton.setVisibility(View.VISIBLE);
+        if (currentMorseSummary == null || currentMorseSummary.isEmpty()) return;
+        applyUiState(UiState.MORSE_PLAYING);
         morseSoundPlayer.playMorse(currentMorseSummary, new MorseSoundPlayer.PlaybackCallback() {
             @Override
             public void onPlaybackStarted(String text, long durationMs) {}
             @Override
             public void onPlaybackFinished() {
                 runOnUiThread(() -> {
-                    if (playMorseButton != null) playMorseButton.setEnabled(true);
-                    if (stopMorseButton != null) stopMorseButton.setVisibility(View.GONE);
+                    if (currentUiState == UiState.MORSE_PLAYING) {
+                        applyUiState(UiState.READY);
+                    }
                 });
             }
             @Override
-            public void onError(String err) {}
+            public void onError(String err) {
+                runOnUiThread(() -> applyUiState(UiState.READY));
+            }
         });
     }
 
     private void stopMorseCode() {
         if (morseSoundPlayer != null) morseSoundPlayer.stop();
-        if (playMorseButton != null) playMorseButton.setEnabled(true);
-        if (stopMorseButton != null) stopMorseButton.setVisibility(View.GONE);
+        applyUiState(UiState.READY);
     }
-
 
     private void startListening() {
         if (isListening) {
             return;
         }
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            Toast.makeText(this, "Offline speech recognition requires Android 12 (API 31)+", Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        if (!SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
-            Toast.makeText(this, "Offline speech recognition is not available on this device.\nPlease verify offline speech packs in Android Settings.", Toast.LENGTH_LONG).show();
-            resultText.setText("Offline speech recognition is not available.\nPlease check offline speech packs in Android Settings.");
-            return;
-        }
-
         try {
             if (speechRecognizer == null) {
-                speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
+                    speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+                } else {
+                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+                }
+                
                 speechRecognizer.setRecognitionListener(new RecognitionListener() {
                     @Override
                     public void onReadyForSpeech(Bundle params) {
                         isListening = true;
-                        // micButton text handled by XML
-                        resultText.setText("Listening (offline)... Speak your question now.");
+                        applyUiState(UiState.LISTENING);
                     }
 
                     @Override
@@ -480,6 +611,9 @@ public class MainActivity extends AppCompatActivity {
 
                     @Override
                     public void onRmsChanged(float rmsdB) {
+                        runOnUiThread(() -> {
+                            if (waveformView != null) waveformView.setRmsDb(rmsdB);
+                        });
                     }
 
                     @Override
@@ -488,53 +622,50 @@ public class MainActivity extends AppCompatActivity {
 
                     @Override
                     public void onEndOfSpeech() {
-                        resultText.setText("Processing speech offline...");
                     }
 
                     @Override
                     public void onError(int error) {
                         isListening = false;
-                        // micButton text handled by XML
+                        applyUiState(UiState.READY);
                         String errorMsg;
                         switch (error) {
                             case SpeechRecognizer.ERROR_NO_MATCH:
-                                errorMsg = "No speech recognized. Tap 🎤 to try again.";
-                                break;
                             case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
-                                errorMsg = "No speech detected. Tap 🎤 to try again.";
+                                errorMsg = "Could not hear that. Hold to speak again.";
                                 break;
                             case SpeechRecognizer.ERROR_AUDIO:
-                                errorMsg = "Audio recording error. Please check microphone.";
+                                errorMsg = "Audio error. Please check microphone.";
                                 break;
                             case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
                                 errorMsg = "Microphone permission is required.";
                                 break;
-                            case SpeechRecognizer.ERROR_SERVER_DISCONNECTED:
-                            case SpeechRecognizer.ERROR_CANNOT_CHECK_SUPPORT:
-                                errorMsg = "Offline speech service disconnected. Check offline language pack in settings.";
-                                break;
-                            case SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED:
-                                errorMsg = "Current language is not installed for offline recognition.";
-                                break;
                             default:
-                                errorMsg = "Speech recognition error (code " + error + "). Tap 🎤 to try again.";
+                                errorMsg = "Voice input unavailable (code " + error + ")";
                                 break;
                         }
-                        resultText.setText(errorMsg);
+                        Toast.makeText(MainActivity.this, errorMsg, Toast.LENGTH_SHORT).show();
                     }
 
                     @Override
                     public void onResults(Bundle results) {
                         isListening = false;
-                        // micButton text handled by XML
+                        applyUiState(UiState.READY);
                         ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                         if (matches != null && !matches.isEmpty()) {
                             String recognizedText = matches.get(0);
-                            questionInput.setText(recognizedText);
-                            questionInput.setSelection(recognizedText.length());
-                            resultText.setText("Voice recognized: \"" + recognizedText + "\"\nReview/edit above, then tap ASK WORLD LENS.");
-                        } else {
-                            resultText.setText("No speech recognized. Tap 🎤 to try again.");
+                            if (chatPanelContainer != null && chatPanelContainer.getVisibility() == View.VISIBLE) {
+                                if (chatQuestionInput != null) {
+                                    chatQuestionInput.setText(recognizedText);
+                                    chatQuestionInput.setSelection(recognizedText.length());
+                                }
+                            } else {
+                                if (questionInput != null) {
+                                    questionInput.setText(recognizedText);
+                                    questionInput.setSelection(recognizedText.length());
+                                }
+                            }
+                            submitQuestion(recognizedText);
                         }
                     }
 
@@ -556,13 +687,12 @@ public class MainActivity extends AppCompatActivity {
 
             speechRecognizer.startListening(intent);
             isListening = true;
-            // micButton text handled by XML
-            resultText.setText("Listening (offline)... Speak your question now.");
+            applyUiState(UiState.LISTENING);
 
         } catch (Exception e) {
             isListening = false;
-            // micButton text handled by XML
-            resultText.setText("Failed to start speech recognition: " + e.getMessage());
+            applyUiState(UiState.READY);
+            Toast.makeText(this, "Failed to start speech recognition: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -573,64 +703,8 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {}
         }
         isListening = false;
-        // micButton text handled by XML
-    }
-
-    private void initHaptics() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            VibratorManager vibratorManager = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
-            vibrator = vibratorManager != null ? vibratorManager.getDefaultVibrator() : null;
-        } else {
-            vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-        }
-    }
-
-    private void triggerHaptic(HapticEvent event) {
-        if (!isAccessibilityModeEnabled || vibrator == null || !vibrator.hasVibrator()) {
-            return;
-        }
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                VibrationEffect effect = null;
-                switch (event) {
-                    case PROCESSING_STARTED:
-                        // Short 50ms vibration pulse
-                        effect = VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE);
-                        break;
-                    case ANSWER_COMPLETED:
-                        // Confirmation double pulse: 50ms buzz, 80ms rest, 70ms buzz
-                        effect = VibrationEffect.createWaveform(new long[]{0, 50, 80, 70}, -1);
-                        break;
-                    case ERROR:
-                        // Distinct triple pulse warning: 80ms buzz, 80ms rest, 80ms buzz, 80ms rest, 120ms buzz
-                        effect = VibrationEffect.createWaveform(new long[]{0, 80, 80, 80, 80, 120}, -1);
-                        break;
-                    case NEW_SCAN:
-                        // Crisp 35ms tick pulse
-                        effect = VibrationEffect.createOneShot(35, VibrationEffect.DEFAULT_AMPLITUDE);
-                        break;
-                }
-                if (effect != null) {
-                    vibrator.vibrate(effect);
-                }
-            } else {
-                switch (event) {
-                    case PROCESSING_STARTED:
-                        vibrator.vibrate(50);
-                        break;
-                    case ANSWER_COMPLETED:
-                        vibrator.vibrate(new long[]{0, 50, 80, 70}, -1);
-                        break;
-                    case ERROR:
-                        vibrator.vibrate(new long[]{0, 80, 80, 80, 80, 120}, -1);
-                        break;
-                    case NEW_SCAN:
-                        vibrator.vibrate(35);
-                        break;
-                }
-            }
-        } catch (Exception ignored) {}
+        if (waveformView != null) waveformView.stopListening();
+        applyUiState(UiState.READY);
     }
 
     private void initTextToSpeech() {
@@ -645,6 +719,7 @@ public class MainActivity extends AppCompatActivity {
                 isTtsReady = false;
             }
         });
+        streamingTtsController = new StreamingTtsController(textToSpeech);
     }
 
     private void speakText(String text) {
@@ -654,9 +729,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void stopSpeaking() {
+        if (streamingTtsController != null) {
+            streamingTtsController.stop();
+        }
         if (textToSpeech != null && isTtsReady) {
             textToSpeech.stop();
         }
+        isTtsSpeaking = false;
     }
 
     private void setupLocalAI() {
@@ -673,7 +752,9 @@ public class MainActivity extends AppCompatActivity {
 
             imageClassifier = ImageClassifier.createFromOptions(this, options);
         } catch (Exception e) {
-            resultText.setText("Model loading failed:\n" + e.getMessage());
+            if (resultText != null) {
+                resultText.setText("Model loading failed:\n" + e.getMessage());
+            }
         }
     }
 
@@ -699,7 +780,9 @@ public class MainActivity extends AppCompatActivity {
                 cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
 
             } catch (ExecutionException | InterruptedException e) {
-                resultText.setText("Failed to start camera:\n" + e.getMessage());
+                if (resultText != null) {
+                    resultText.setText("Failed to start camera:\n" + e.getMessage());
+                }
             }
         }, ContextCompat.getMainExecutor(this));
     }
@@ -731,12 +814,12 @@ public class MainActivity extends AppCompatActivity {
             }
 
             // Only update live image classification if user hasn't asked a custom question
-            if (!isCustomQuestionAsked) {
+            if (!isCustomQuestionAsked && resultText != null) {
                 runOnUiThread(() -> resultText.setText("Live Recognition:\n" + output.toString()));
             }
 
         } catch (Exception e) {
-            if (!isCustomQuestionAsked) {
+            if (!isCustomQuestionAsked && resultText != null) {
                 runOnUiThread(() -> resultText.setText("Analysis error: " + e.getMessage()));
             }
         } finally {
@@ -750,10 +833,8 @@ public class MainActivity extends AppCompatActivity {
             if (gemmaModelFile == null) {
                 isGemmaReady = false;
                 runOnUiThread(() -> {
-                    askButton.setText("IMPORT MODEL (.litertlm)");
-                    askButton.setEnabled(true);
-                    if (!isCustomQuestionAsked) {
-                        resultText.setText("Gemma-4-E2B-it model not found in app storage.\n\nTap 'IMPORT MODEL' to select gemma-4-E2B-it.litertlm from your Downloads folder.");
+                    if (!isCustomQuestionAsked && resultText != null) {
+                        resultText.setText("Gemma-4-E2B-it model not found in app storage.\n\nTap 'Settings' ⚙ to select gemma-4-E2B-it.litertlm from your Downloads folder.");
                     }
                 });
                 return;
@@ -766,9 +847,10 @@ public class MainActivity extends AppCompatActivity {
     private void importModelFromUri(@NonNull Uri uri) {
         isGemmaLoading = true;
         runOnUiThread(() -> {
-            askButton.setEnabled(false);
-            loadingProgressBar.setVisibility(View.VISIBLE);
-            resultText.setText("Importing model from Downloads into app-private storage...\nPlease keep the app open.");
+            if (loadingProgressBar != null) loadingProgressBar.setVisibility(View.VISIBLE);
+            if (resultText != null) {
+                resultText.setText("Importing model from Downloads into app-private storage...\nPlease keep the app open.");
+            }
         });
 
         vlmExecutor.execute(() -> {
@@ -792,7 +874,9 @@ public class MainActivity extends AppCompatActivity {
                     if (now - lastReportTime > 500) { // Update status every 500ms
                         lastReportTime = now;
                         long mbCopied = totalBytes / (1024 * 1024);
-                        runOnUiThread(() -> resultText.setText("Importing model: " + mbCopied + " MB copied..."));
+                        runOnUiThread(() -> {
+                            if (resultText != null) resultText.setText("Importing model: " + mbCopied + " MB copied...");
+                        });
                     }
                 }
                 out.flush();
@@ -800,8 +884,6 @@ public class MainActivity extends AppCompatActivity {
                 gemmaModelFile = targetFile;
                 runOnUiThread(() -> {
                     Toast.makeText(this, "Model imported successfully!", Toast.LENGTH_SHORT).show();
-                    askButton.setText("ASK WORLD LENS");
-                    askButton.setEnabled(true);
                 });
 
                 // Initialize the newly imported model
@@ -810,9 +892,8 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 isGemmaLoading = false;
                 runOnUiThread(() -> {
-                    askButton.setEnabled(true);
-                    loadingProgressBar.setVisibility(View.GONE);
-                    resultText.setText("Failed to import model: " + e.getMessage());
+                    if (loadingProgressBar != null) loadingProgressBar.setVisibility(View.GONE);
+                    if (resultText != null) resultText.setText("Failed to import model: " + e.getMessage());
                 });
             }
         });
@@ -821,8 +902,8 @@ public class MainActivity extends AppCompatActivity {
     private void initGemmaEngine(@NonNull File modelFile) {
         isGemmaLoading = true;
         runOnUiThread(() -> {
-            loadingProgressBar.setVisibility(View.VISIBLE);
-            if (!isCustomQuestionAsked) {
+            if (loadingProgressBar != null) loadingProgressBar.setVisibility(View.VISIBLE);
+            if (!isCustomQuestionAsked && resultText != null) {
                 resultText.setText("Found model: " + modelFile.getName() + "\nInitializing Gemma-4-E2B-it (GPU)...");
             }
         });
@@ -836,14 +917,13 @@ public class MainActivity extends AppCompatActivity {
                     new Backend.GPU(),
                     null, // audioBackend
                     null, // maxNumTokens (model default)
-                    null, // maxNumImages (SDK/model default, NOT hard-coded)
+                    null, // maxNumImages (SDK/model default)
                     getCacheDir().getAbsolutePath()
             );
             engine = new Engine(gpuConfig);
             engine.initialize();
 
             gemmaEngine = engine;
-            llmBackend = new Backend.GPU();
             visionBackend = new Backend.GPU();
             isGemmaReady = true;
             isGemmaLoading = false;
@@ -858,13 +938,11 @@ public class MainActivity extends AppCompatActivity {
             isFirstTurnOfScan = true;
 
             runOnUiThread(() -> {
-                askButton.setText("ASK WORLD LENS");
-                askButton.setEnabled(true);
-                if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
-                loadingProgressBar.setVisibility(View.GONE);
-                if (!isCustomQuestionAsked) {
+                if (loadingProgressBar != null) loadingProgressBar.setVisibility(View.GONE);
+                if (!isCustomQuestionAsked && resultText != null) {
                     resultText.setText("Local Gemma-4-E2B-it ready (GPU)!\nPoint camera at an object and ask a question.");
                 }
+                applyUiState(UiState.READY);
             });
             return;
         } catch (Exception gpuEx) {
@@ -877,7 +955,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             runOnUiThread(() -> {
-                if (!isCustomQuestionAsked) {
+                if (!isCustomQuestionAsked && resultText != null) {
                     resultText.setText("GPU initialization failed, falling back to CPU...\n" + gpuEx.getMessage());
                 }
             });
@@ -898,7 +976,6 @@ public class MainActivity extends AppCompatActivity {
             engine.initialize();
 
             gemmaEngine = engine;
-            llmBackend = new Backend.CPU();
             visionBackend = new Backend.CPU();
             isGemmaReady = true;
             isGemmaLoading = false;
@@ -913,13 +990,11 @@ public class MainActivity extends AppCompatActivity {
             isFirstTurnOfScan = true;
 
             runOnUiThread(() -> {
-                askButton.setText("ASK WORLD LENS");
-                askButton.setEnabled(true);
-                if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
-                loadingProgressBar.setVisibility(View.GONE);
-                if (!isCustomQuestionAsked) {
+                if (loadingProgressBar != null) loadingProgressBar.setVisibility(View.GONE);
+                if (!isCustomQuestionAsked && resultText != null) {
                     resultText.setText("Local Gemma-4-E2B-it ready (CPU fallback)!\nPoint camera at an object and ask a question.");
                 }
+                applyUiState(UiState.READY);
             });
         } catch (Exception cpuEx) {
             if (engine != null) {
@@ -931,9 +1006,11 @@ public class MainActivity extends AppCompatActivity {
             isGemmaReady = false;
             isGemmaLoading = false;
             runOnUiThread(() -> {
-                askButton.setEnabled(true);
-                loadingProgressBar.setVisibility(View.GONE);
-                resultText.setText("Model initialization failed on both GPU and CPU:\n" + cpuEx.getMessage());
+                if (loadingProgressBar != null) loadingProgressBar.setVisibility(View.GONE);
+                if (resultText != null) {
+                    resultText.setText("Model initialization failed on both GPU and CPU:\n" + cpuEx.getMessage());
+                }
+                applyUiState(UiState.ERROR);
             });
         }
     }
@@ -974,7 +1051,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         stopSpeaking();
-        triggerHaptic(HapticEvent.NEW_SCAN);
 
         if (isInferenceRunning) {
             Toast.makeText(this, "Please wait for current answer to finish...", Toast.LENGTH_SHORT).show();
@@ -1000,15 +1076,22 @@ public class MainActivity extends AppCompatActivity {
                 isCustomQuestionAsked = false;
 
                 runOnUiThread(() -> {
-                    questionInput.setText("");
-                    askButton.setText("ASK WORLD LENS");
-                    showCameraState();
-                    if (resultText != null) resultText.setText("Ready for new scan.\nPoint camera at an object and ask a question.");
-                    Toast.makeText(this, "New scan session started.", Toast.LENGTH_SHORT).show();
+                    conversationHistory.clear();
+                    updateChatHistoryUI();
+                    closeChatPanel();
+                    if (questionInput != null) questionInput.setText("");
+                    if (chatQuestionInput != null) chatQuestionInput.setText("");
+                    lastAskedQuestion = "";
+                    currentFullAnswer = "";
+                    currentMorseSummary = "";
+                    currentMorseCode = "";
+                    if (resultText != null) resultText.setText("Point camera at an object and hold the microphone to ask.");
+                    applyUiState(UiState.READY);
+                    Toast.makeText(this, "New chat started.", Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    resultText.setText("Failed to start new conversation:\n" + e.getMessage());
+                    showErrorState("Failed to start new conversation:\n" + e.getMessage());
                 });
             }
         });
@@ -1023,21 +1106,81 @@ public class MainActivity extends AppCompatActivity {
             String modifiedQuestion = question + "\n\nPlease provide your response exactly in the following format:\n\nFULL ANSWER:\n[your detailed answer here]\n\nMORSE SUMMARY TEXT:\n[a very short summary of max 7 words]";
 
             final StringBuilder accumulatedResponse = new StringBuilder();
+            
+            final int[] lastSpokenCharIndex = {0};
+            final int[] lastVisibleCharIndex = {0};
+            final boolean[] hasFoundFullAnswerStart = {false};
+            final boolean[] hasFoundSummaryStart = {false};
+
+            if (streamingTtsController != null) {
+                streamingTtsController.start();
+                isTtsSpeaking = true;
+            }
+
+            runOnUiThread(() -> applyUiState(UiState.STREAMING));
 
             MessageCallback callback = new MessageCallback() {
                 @Override
                 public void onMessage(@NonNull Message message) {
                     String chunk = extractTextFromMessage(message);
                     accumulatedResponse.append(chunk);
-                    runOnUiThread(() -> {
-                        if (resultText != null) resultText.setText("Thinking...");
-                    });
+                    String currentTotal = accumulatedResponse.toString();
+
+                    if (!hasFoundFullAnswerStart[0]) {
+                        int startIdx = currentTotal.indexOf("FULL ANSWER:");
+                        if (startIdx != -1) {
+                            hasFoundFullAnswerStart[0] = true;
+                            lastVisibleCharIndex[0] = startIdx + 12;
+                            lastSpokenCharIndex[0] = startIdx + 12;
+                        } else if (currentTotal.length() > 50) { 
+                            hasFoundFullAnswerStart[0] = true;
+                        }
+                    }
+
+                    if (hasFoundFullAnswerStart[0] && !hasFoundSummaryStart[0]) {
+                        int sumIdx = currentTotal.indexOf("MORSE SUMMARY TEXT:");
+                        if (sumIdx != -1) {
+                            hasFoundSummaryStart[0] = true;
+                            
+                            if (sumIdx > lastSpokenCharIndex[0]) {
+                                String newAnswerText = currentTotal.substring(lastSpokenCharIndex[0], sumIdx);
+                                if (streamingTtsController != null) streamingTtsController.append(newAnswerText);
+                                lastSpokenCharIndex[0] = sumIdx;
+                            }
+                            
+                            if (sumIdx > lastVisibleCharIndex[0]) {
+                                String visibleText = currentTotal.substring(lastVisibleCharIndex[0], sumIdx);
+                                runOnUiThread(() -> {
+                                    if (resultText != null) resultText.setText(visibleText.trim());
+                                    updateStreamingChatTurn(visibleText.trim());
+                                });
+                            }
+                        } else {
+                            int safeLength = currentTotal.length() - 25; 
+                            
+                            if (safeLength > lastSpokenCharIndex[0]) {
+                                String safeNewText = currentTotal.substring(lastSpokenCharIndex[0], safeLength);
+                                if (streamingTtsController != null) streamingTtsController.append(safeNewText);
+                                lastSpokenCharIndex[0] = safeLength;
+                            }
+                            
+                            if (safeLength > lastVisibleCharIndex[0]) {
+                                String visibleText = currentTotal.substring(lastVisibleCharIndex[0], safeLength);
+                                runOnUiThread(() -> {
+                                    if (resultText != null) resultText.setText(visibleText.trim());
+                                    updateStreamingChatTurn(visibleText.trim());
+                                });
+                            }
+                        }
+                    }
                 }
 
                 @Override
                 public void onDone() {
                     isInferenceRunning = false;
                     isFirstTurnOfScan = false;
+                    
+                    if (streamingTtsController != null) streamingTtsController.finish();
                     
                     String rawResponse = accumulatedResponse.toString();
                     currentFullAnswer = rawResponse;
@@ -1062,32 +1205,32 @@ public class MainActivity extends AppCompatActivity {
                     
                     currentMorseCode = MorseEncoder.textToMorseString(currentMorseSummary);
                     
-                    triggerHaptic(HapticEvent.ANSWER_COMPLETED);
-                    speakText(currentFullAnswer);
+                    if (!conversationHistory.isEmpty()) {
+                        ChatTurn lastTurn = conversationHistory.get(conversationHistory.size() - 1);
+                        lastTurn.answer = currentFullAnswer;
+                        lastTurn.morseSummary = currentMorseSummary;
+                        lastTurn.morseCode = currentMorseCode;
+                    }
                     
                     runOnUiThread(() -> {
-                        showResultState();
-                        if (loadingProgressBar != null) loadingProgressBar.setVisibility(View.GONE);
-                        if (askButton != null) askButton.setEnabled(true);
-                        if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
-                        if (askButton != null) askButton.setText("ASK FOLLOW-UP");
+                        applyUiState(UiState.READY);
                         if (questionInput != null) questionInput.setText("");
-                        
+                        if (chatQuestionInput != null) chatQuestionInput.setText("");
                         if (resultText != null) resultText.setText(currentFullAnswer);
-                        if (morseSummaryText != null) morseSummaryText.setText(currentMorseSummary);
-                        if (morseCodeText != null) morseCodeText.setText(currentMorseCode);
-                        if (questionEchoText != null) questionEchoText.setText(lastAskedQuestion);
+                        updateChatHistoryUI();
                     });
                 }
 
                 @Override
                 public void onError(@NonNull Throwable throwable) {
                     isInferenceRunning = false;
-                    triggerHaptic(HapticEvent.ERROR);
+                    if (!conversationHistory.isEmpty()) {
+                        ChatTurn lastTurn = conversationHistory.get(conversationHistory.size() - 1);
+                        lastTurn.answer = "Inference error: " + throwable.getMessage();
+                    }
                     runOnUiThread(() -> {
+                        updateChatHistoryUI();
                         showErrorState("Inference error:\n" + throwable.getMessage());
-                        if (askButton != null) askButton.setEnabled(true);
-                        if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
                     });
                 }
             };
@@ -1109,15 +1252,13 @@ public class MainActivity extends AppCompatActivity {
 
         } catch (Exception e) {
             isInferenceRunning = false;
-            triggerHaptic(HapticEvent.ERROR);
             runOnUiThread(() -> {
                 showErrorState("Failed to process question:\n" + e.getMessage());
-                if (askButton != null) askButton.setEnabled(true);
-                if (newScanButtonFromExport != null) newScanButtonFromExport.setEnabled(true);
+                if (sendQuestionButton != null) sendQuestionButton.setEnabled(true);
+                if (chatSendButton != null) chatSendButton.setEnabled(true);
             });
         }
     }
-
 
     private String extractTextFromMessage(Message message) {
         if (message == null || message.getContents() == null) {
@@ -1146,12 +1287,6 @@ public class MainActivity extends AppCompatActivity {
                 speechRecognizer.cancel();
             } catch (Exception ignored) {}
             isListening = false;
-            // micButton text handled by XML
-        }
-        if (vibrator != null) {
-            try {
-                vibrator.cancel();
-            } catch (Exception ignored) {}
         }
         stopSpeaking();
     }
@@ -1164,12 +1299,6 @@ public class MainActivity extends AppCompatActivity {
                 speechRecognizer.destroy();
             } catch (Exception ignored) {}
             speechRecognizer = null;
-        }
-        if (vibrator != null) {
-            try {
-                vibrator.cancel();
-            } catch (Exception ignored) {}
-            vibrator = null;
         }
         if (textToSpeech != null) {
             try {
@@ -1198,6 +1327,353 @@ public class MainActivity extends AppCompatActivity {
                 gemmaEngine.close();
             } catch (Exception ignored) {}
             gemmaEngine = null;
+        }
+    }
+
+    // ====================================================================
+    // WIREFRAME INTERACTION & STATE LOGIC
+    // ====================================================================
+
+    private void submitQuestion(String question) {
+        if (isListening) {
+            stopListening();
+        }
+
+        if (isInferenceRunning) {
+            Toast.makeText(this, "Thinking... please wait for current answer.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (gemmaModelFile == null || (!isGemmaReady && !isGemmaLoading)) {
+            modelPickerLauncher.launch(new String[]{"*/*"});
+            return;
+        }
+
+        if (isGemmaLoading) {
+            Toast.makeText(this, "Gemma model is still initializing. Please wait...", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (!isGemmaReady || gemmaEngine == null) {
+            Toast.makeText(this, "Model not ready. Tap to select model file.", Toast.LENGTH_LONG).show();
+            modelPickerLauncher.launch(new String[]{"*/*"});
+            return;
+        }
+
+        String prompt = (question == null) ? "" : question.trim();
+        if (prompt.isEmpty()) {
+            prompt = isFirstTurnOfScan ? "Describe this image in detail." : "Tell me more about what you see.";
+        } else {
+            isCustomQuestionAsked = true;
+        }
+
+        lastAskedQuestion = prompt;
+        isInferenceRunning = true;
+        stopSpeaking();
+        stopMorseCode();
+        applyUiState(UiState.PROCESSING);
+
+        // Append user turn to conversation history
+        ChatTurn newTurn = new ChatTurn(prompt, "Thinking...", "", "");
+        conversationHistory.add(newTurn);
+        updateChatHistoryUI();
+
+        // Clear input fields
+        if (questionInput != null) questionInput.setText("");
+        if (chatQuestionInput != null) chatQuestionInput.setText("");
+
+        // Hide keyboard
+        try {
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null && getCurrentFocus() != null) {
+                imm.hideSoftInputFromWindow(getCurrentFocus().getWindowToken(), 0);
+            }
+        } catch (Exception ignored) {}
+
+        final String finalQ = prompt;
+        if (isFirstTurnOfScan) {
+            Bitmap capturedBitmap = viewFinder.getBitmap();
+            if (capturedBitmap == null) {
+                isInferenceRunning = false;
+                showErrorState("Failed to capture image from camera.");
+                return;
+            }
+            final Bitmap imageForInference = capturedBitmap;
+            vlmExecutor.execute(() -> runGemmaTurn(finalQ, imageForInference, true));
+        } else {
+            vlmExecutor.execute(() -> runGemmaTurn(finalQ, null, false));
+        }
+    }
+
+    private void showMoreActionsMenu(View anchor) {
+        PopupMenu popup = new PopupMenu(this, anchor);
+        popup.getMenu().add(0, 1, 0, isTtsSpeaking ? "Stop Speaking" : "Read Answer Aloud");
+        popup.getMenu().add(0, 2, 1, "Copy Response");
+        popup.getMenu().add(0, 3, 2, "Export Report (Markdown)");
+        popup.getMenu().add(0, 4, 3, "Morse Code Details");
+        popup.getMenu().add(0, 5, 4, "View Full Conversation");
+        popup.getMenu().add(0, 6, 5, "New Scan");
+
+        popup.setOnMenuItemClickListener(item -> {
+            switch (item.getItemId()) {
+                case 1:
+                    if (isTtsSpeaking) {
+                        stopSpeaking();
+                        applyUiState(UiState.READY);
+                    } else if (currentFullAnswer != null && !currentFullAnswer.trim().isEmpty()) {
+                        isTtsSpeaking = true;
+                        applyUiState(UiState.SPEAKING);
+                        speakText(currentFullAnswer);
+                    } else {
+                        Toast.makeText(this, "No answer to read aloud.", Toast.LENGTH_SHORT).show();
+                    }
+                    return true;
+                case 2:
+                    copyResultToClipboard();
+                    return true;
+                case 3:
+                    exportReportToMarkdown();
+                    return true;
+                case 4:
+                    showMorseDetailsDialog();
+                    return true;
+                case 5:
+                    openChatPanel();
+                    return true;
+                case 6:
+                    resetConversation();
+                    return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private void showSettingsDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("World Lens Settings")
+                .setMessage("• AI Engine: Gemma-4-E2B-it via LiteRT-LM\n" +
+                        "• Vision Acceleration: " + (visionBackend instanceof Backend.GPU ? "GPU" : "CPU") + "\n" +
+                        "• Speech: Offline On-Device TTS\n" +
+                        "• Audio Morse: 700 Hz Tone Generator\n" +
+                        "• Privacy: 100% Offline & Private\n" +
+                        "• Target Device: iQOO Neo 6\n\n" +
+                        "Tap 'Select Model' if you wish to import a different .litertlm file.")
+                .setPositiveButton("Close", null)
+                .setNeutralButton("Select Model", (dialog, which) -> {
+                    modelPickerLauncher.launch(new String[]{"*/*"});
+                })
+                .show();
+    }
+
+    private void showMorseDetailsDialog() {
+        String summary = (currentMorseSummary != null && !currentMorseSummary.isEmpty()) ? currentMorseSummary : "No Morse code generated yet.";
+        String code = (currentMorseCode != null && !currentMorseCode.isEmpty()) ? currentMorseCode : "No dots or dashes yet.";
+
+        new AlertDialog.Builder(this)
+                .setTitle("Morse Code Details")
+                .setMessage("Summary:\n" + summary + "\n\nMorse Code:\n" + code)
+                .setPositiveButton("Play Morse", (dialog, which) -> playMorseCode())
+                .setNegativeButton("Copy Code", (dialog, which) -> {
+                    ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    ClipData clip = ClipData.newPlainText("Morse Code", code);
+                    clipboard.setPrimaryClip(clip);
+                    Toast.makeText(this, "Morse code copied", Toast.LENGTH_SHORT).show();
+                })
+                .setNeutralButton("Close", null)
+                .show();
+    }
+
+    private void openChatPanel() {
+        if (chatPanelContainer != null) {
+            chatPanelContainer.setVisibility(View.VISIBLE);
+            updateChatHistoryUI();
+            if (chatScrollView != null) {
+                chatScrollView.post(() -> chatScrollView.fullScroll(View.FOCUS_DOWN));
+            }
+        }
+    }
+
+    private void closeChatPanel() {
+        if (chatPanelContainer != null) {
+            chatPanelContainer.setVisibility(View.GONE);
+        }
+    }
+
+    private void updateChatHistoryUI() {
+        if (chatMessagesLayout == null) return;
+        chatMessagesLayout.removeAllViews();
+
+        if (conversationHistory.isEmpty()) {
+            TextView emptyView = new TextView(this);
+            emptyView.setText("No messages yet.\nPoint the camera at an object and ask a question to begin.");
+            emptyView.setTextColor(ContextCompat.getColor(this, R.color.wl_text_secondary));
+            emptyView.setTextSize(14);
+            emptyView.setGravity(Gravity.CENTER);
+            emptyView.setPadding(32, 64, 32, 64);
+            chatMessagesLayout.addView(emptyView);
+            return;
+        }
+
+        for (int i = 0; i < conversationHistory.size(); i++) {
+            ChatTurn turn = conversationHistory.get(i);
+
+            // User Question Bubble
+            LinearLayout userRow = new LinearLayout(this);
+            userRow.setOrientation(LinearLayout.HORIZONTAL);
+            userRow.setGravity(Gravity.END);
+            LinearLayout.LayoutParams userRowParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            userRowParams.setMargins(48, 8, 0, 8);
+            userRow.setLayoutParams(userRowParams);
+
+            TextView userBubble = new TextView(this);
+            userBubble.setText(turn.question);
+            userBubble.setTextColor(ContextCompat.getColor(this, R.color.wl_text_primary));
+            userBubble.setTextSize(14);
+            userBubble.setBackgroundResource(R.drawable.bg_bubble_user);
+            userBubble.setPadding(32, 20, 32, 20);
+            userRow.addView(userBubble);
+            chatMessagesLayout.addView(userRow);
+
+            // AI Answer Card
+            LinearLayout aiCard = new LinearLayout(this);
+            aiCard.setOrientation(LinearLayout.VERTICAL);
+            aiCard.setBackgroundResource(R.drawable.bg_bubble_ai);
+            aiCard.setPadding(30, 22, 30, 22);
+            LinearLayout.LayoutParams aiCardParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            aiCardParams.setMargins(0, 8, 48, 16);
+            aiCard.setLayoutParams(aiCardParams);
+
+            // AI Label Header
+            TextView aiTitle = new TextView(this);
+            aiTitle.setText("AI");
+            aiTitle.setTextColor(ContextCompat.getColor(this, R.color.wl_primary));
+            aiTitle.setTextSize(13);
+            aiTitle.setTypeface(null, Typeface.BOLD);
+            aiCard.addView(aiTitle);
+
+            // AI Body Text
+            TextView aiBody = new TextView(this);
+            aiBody.setTag("ai_turn_" + i);
+            aiBody.setText(turn.answer);
+            aiBody.setTextColor(ContextCompat.getColor(this, R.color.wl_text_body));
+            aiBody.setTextSize(14);
+            aiBody.setLineSpacing(4f, 1f);
+            LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            bodyParams.setMargins(0, 6, 0, 8);
+            aiBody.setLayoutParams(bodyParams);
+            aiCard.addView(aiBody);
+
+            // Morse Preview Pill (if available)
+            if (turn.morseSummary != null && !turn.morseSummary.isEmpty() && !turn.morseSummary.equals("...") && !turn.morseSummary.equals(turn.answer)) {
+                TextView morsePill = new TextView(this);
+                morsePill.setText("••• Morse: " + turn.morseSummary);
+                morsePill.setTextColor(ContextCompat.getColor(this, R.color.wl_primary));
+                morsePill.setTextSize(12);
+                morsePill.setTypeface(null, Typeface.BOLD);
+                morsePill.setBackgroundResource(R.drawable.bg_live_badge);
+                morsePill.setPadding(20, 10, 20, 10);
+                LinearLayout.LayoutParams morseParams = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                morseParams.setMargins(0, 4, 0, 10);
+                morsePill.setLayoutParams(morseParams);
+                aiCard.addView(morsePill);
+            }
+
+            // Action Buttons Row inside AI card
+            LinearLayout actionRow = new LinearLayout(this);
+            actionRow.setOrientation(LinearLayout.HORIZONTAL);
+            actionRow.setGravity(Gravity.CENTER_VERTICAL);
+
+            final String answerText = turn.answer;
+            final String morseText = turn.morseSummary;
+
+            // Read aloud
+            Button readBtn = new Button(this, null, androidx.appcompat.R.attr.buttonStyleSmall);
+            readBtn.setText("🔊 Read");
+            readBtn.setTextSize(11);
+            readBtn.setTextColor(ContextCompat.getColor(this, R.color.wl_text_primary));
+            readBtn.setBackgroundResource(R.drawable.bg_pill_button);
+            readBtn.setPadding(24, 0, 24, 0);
+            readBtn.setOnClickListener(v -> speakText(answerText));
+            actionRow.addView(readBtn);
+
+            // Play Morse
+            if (morseText != null && !morseText.isEmpty()) {
+                Button morseBtn = new Button(this, null, androidx.appcompat.R.attr.buttonStyleSmall);
+                morseBtn.setText("••• Morse");
+                morseBtn.setTextSize(11);
+                morseBtn.setTextColor(ContextCompat.getColor(this, R.color.wl_text_primary));
+                morseBtn.setBackgroundResource(R.drawable.bg_pill_button);
+                LinearLayout.LayoutParams morseBtnParams = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                morseBtnParams.setMarginStart(12);
+                morseBtn.setLayoutParams(morseBtnParams);
+                morseBtn.setPadding(24, 0, 24, 0);
+                morseBtn.setOnClickListener(v -> {
+                    applyUiState(UiState.MORSE_PLAYING);
+                    morseSoundPlayer.playMorse(morseText, new MorseSoundPlayer.PlaybackCallback() {
+                        @Override public void onPlaybackStarted(String text, long durationMs) {}
+                        @Override public void onPlaybackFinished() {
+                            runOnUiThread(() -> {
+                                if (currentUiState == UiState.MORSE_PLAYING) applyUiState(UiState.READY);
+                            });
+                        }
+                        @Override public void onError(String err) {
+                            runOnUiThread(() -> applyUiState(UiState.READY));
+                        }
+                    });
+                });
+                actionRow.addView(morseBtn);
+            }
+
+            // Copy
+            Button copyBtn = new Button(this, null, androidx.appcompat.R.attr.buttonStyleSmall);
+            copyBtn.setText("📋 Copy");
+            copyBtn.setTextSize(11);
+            copyBtn.setTextColor(ContextCompat.getColor(this, R.color.wl_text_primary));
+            copyBtn.setBackgroundResource(R.drawable.bg_pill_button);
+            LinearLayout.LayoutParams copyBtnParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            copyBtnParams.setMarginStart(12);
+            copyBtn.setLayoutParams(copyBtnParams);
+            copyBtn.setPadding(24, 0, 24, 0);
+            copyBtn.setOnClickListener(v -> {
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                ClipData clip = ClipData.newPlainText("AI Answer", answerText);
+                clipboard.setPrimaryClip(clip);
+                Toast.makeText(this, "Answer copied", Toast.LENGTH_SHORT).show();
+            });
+            actionRow.addView(copyBtn);
+
+            aiCard.addView(actionRow);
+            chatMessagesLayout.addView(aiCard);
+        }
+
+        if (chatScrollView != null) {
+            chatScrollView.post(() -> chatScrollView.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
+    private void updateStreamingChatTurn(String partialAnswer) {
+        if (conversationHistory.isEmpty()) return;
+        ChatTurn lastTurn = conversationHistory.get(conversationHistory.size() - 1);
+        lastTurn.answer = partialAnswer;
+
+        if (chatMessagesLayout != null && chatPanelContainer != null && chatPanelContainer.getVisibility() == View.VISIBLE) {
+            TextView targetView = chatMessagesLayout.findViewWithTag("ai_turn_" + (conversationHistory.size() - 1));
+            if (targetView != null) {
+                targetView.setText(partialAnswer);
+            }
+            if (chatScrollView != null) {
+                boolean isAtBottom = !chatScrollView.canScrollVertically(1);
+                if (isAtBottom) {
+                    chatScrollView.post(() -> chatScrollView.fullScroll(View.FOCUS_DOWN));
+                }
+            }
         }
     }
 }

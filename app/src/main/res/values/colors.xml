@@ -1,22 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- White Theme / VisionRelay Style -->
-    <color name="wl_primary">#6B4EFF</color> <!-- Vibrant Purple/Blue -->
-    <color name="wl_primary_light">#EAE6FF</color>
-    <color name="wl_background">#F8F9FA</color> <!-- Off-white background -->
-    <color name="wl_surface">#FFFFFF</color> <!-- Pure white for cards -->
-    <color name="wl_surface_variant">#F1F3F4</color> <!-- Slightly darker for input fields -->
-    
-    <color name="wl_text_primary">#202124</color>
-    <color name="wl_text_secondary">#5F6368</color>
-    <color name="wl_text_on_primary">#FFFFFF</color>
-    
-    <!-- Accent colors for cards (Morse Summary etc) -->
-    <color name="wl_accent_purple">#F3E8FF</color>
-    <color name="wl_accent_green">#E6F4EA</color>
-    
-    <!-- Icon tints -->
-    <color name="wl_icon_tint">#202124</color>
-    <color name="wl_icon_tint_inactive">#BDC1C6</color>
-    <color name="wl_divider">#E8EAED</color>
+    <!-- World Lens Palette: Section 19 Specification -->
+    <!-- Dusty Taupe: #9F7E69 -->
+    <color name="wl_primary">#9F7E69</color>
+    <color name="wl_primary_dark">#7D5F4D</color>
+    <color name="wl_primary_light">#D2BBA0</color>
+
+    <!-- Pale Oak: #D2BBA0 -->
+    <color name="wl_secondary">#D2BBA0</color>
+    <color name="wl_secondary_light">#EAE0D5</color>
+
+    <!-- Lemon Chiffon: #F2EFC7 -->
+    <color name="wl_highlight">#F2EFC7</color>
+    <color name="wl_highlight_warm">#E8E3AA</color>
+
+    <!-- Light Yellow: #F7FFE0 -->
+    <color name="wl_background">#F7FFE0</color>
+
+    <!-- Linen: #FFEEE2 -->
+    <color name="wl_surface">#FFEEE2</color>
+    <color name="wl_surface_variant">#F5E0D0</color>
+
+    <!-- Contrast & Typography -->
+    <color name="wl_text_primary">#3D2E24</color>
+    <color name="wl_text_body">#4A3B31</color>
+    <color name="wl_text_secondary">#7A6658</color>
+    <color name="wl_text_on_primary">#FFEEE2</color>
+    <color name="wl_text_on_alert">#FFFFFF</color>
+
+    <!-- Alert / Stop Actions -->
+    <color name="wl_alert">#B84A39</color>
+    <color name="wl_alert_light">#FCEBE8</color>
+
+    <!-- Borders & Dividers -->
+    <color name="wl_divider">#D2BBA0</color>
+    <color name="wl_border">#9F7E69</color>
+    <color name="wl_icon_tint">#9F7E69</color>
+    <color name="wl_icon_tint_dark">#3D2E24</color>
+    <color name="wl_icon_tint_inactive">#B09E90</color>
+
+    <!-- Pure tokens -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="ink_black">#3D2E24</color>
+    <color name="amber_glow">#9F7E69</color>
 </resources>

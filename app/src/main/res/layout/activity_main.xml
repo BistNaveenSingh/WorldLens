@@ -8,565 +8,561 @@
     android:layout_height="match_parent"
     android:background="@color/wl_background">
 
-    <!-- MAIN SCROLL VIEW for content -->
-    <ScrollView
+    <!-- ================================================================ -->
+    <!-- 1. TOP HEADER (WORLD LENS | + New Chat | ● LIVE | ⚙ Settings)     -->
+    <!-- ================================================================ -->
+    <LinearLayout
+        android:id="@+id/headerLayout"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:fillViewport="true">
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="8dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Project Title -->
+        <TextView
+            android:id="@+id/appTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="WORLD LENS"
+            android:textColor="@color/wl_primary"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04" />
+
+        <!-- + New Chat Button (Wireframe Center-Top) -->
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/newChatTopButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="+ New Chat"
+            android:textColor="@color/wl_text_primary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_pill_button"
+            android:paddingHorizontal="12dp"
+            android:layout_marginEnd="8dp"
+            android:importantForAccessibility="yes"
+            android:contentDescription="Start new chat and reset conversation" />
+
+        <!-- ● LIVE Indicator Badge -->
+        <TextView
+            android:id="@+id/liveStatusIndicator"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:gravity="center"
+            android:text="● LIVE"
+            android:textColor="@color/wl_text_primary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_live_badge"
+            android:paddingHorizontal="10dp"
+            android:layout_marginEnd="6dp"
+            android:importantForAccessibility="yes"
+            android:contentDescription="Camera is live and ready" />
+
+        <!-- ⚙ Settings Gear Button -->
+        <ImageButton
+            android:id="@+id/settingsButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_preferences"
+            android:contentDescription="Settings and Model Info"
+            app:tint="@color/wl_icon_tint_dark" />
+    </LinearLayout>
+
+    <!-- ================================================================ -->
+    <!-- 2. DOMINANT LIVE CAMERA VIEW (Wireframe Center Area)              -->
+    <!-- ================================================================ -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cameraCard"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:cardCornerRadius="24dp"
+        app:cardBackgroundColor="@color/wl_surface"
+        app:strokeWidth="1.5dp"
+        app:strokeColor="@color/wl_divider"
+        app:cardElevation="2dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginEnd="14dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintTop_toBottomOf="@id/headerLayout"
+        app:layout_constraintBottom_toTopOf="@id/responsePreviewCard"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <androidx.camera.view.PreviewView
+            android:id="@+id/viewFinder"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="Live Camera Preview" />
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- STARTUP / MODEL LOADING BANNER -->
+    <LinearLayout
+        android:id="@+id/loadingStateContainer"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_pill_button"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
+        android:visibility="gone"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toTopOf="@id/cameraCard"
+        app:layout_constraintStart_toStartOf="@id/cameraCard"
+        app:layout_constraintEnd_toEndOf="@id/cameraCard">
+
+        <ProgressBar
+            android:id="@+id/loadingProgressBar"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:indeterminateTint="@color/wl_primary"
+            android:layout_marginEnd="10dp" />
+
+        <TextView
+            android:id="@+id/loadingStatusText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Preparing offline AI..."
+            android:textColor="@color/wl_primary"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- INLINE ERROR BANNER -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/errorStateContainer"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:cardBackgroundColor="@color/wl_surface"
+        app:strokeColor="@color/wl_alert"
+        app:strokeWidth="1.5dp"
+        app:cardCornerRadius="16dp"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintBottom_toBottomOf="@id/cameraCard"
+        app:layout_constraintStart_toStartOf="@id/cameraCard"
+        app:layout_constraintEnd_toEndOf="@id/cameraCard">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp"
-            android:clipChildren="false">
+            android:padding="12dp">
 
-            <!-- ============================== -->
-            <!-- STATE: CAMERA (Home)           -->
-            <!-- ============================== -->
-            <LinearLayout
-                android:id="@+id/cameraStateContainer"
+            <TextView
+                android:id="@+id/errorText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:text="Could not understand the current view."
+                android:textColor="@color/wl_alert"
+                android:textSize="13sp"
+                android:lineSpacingExtra="2dp"
+                android:layout_marginBottom="8dp" />
 
-                <!-- Header -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="24dp">
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/retryButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Try Again"
+                android:textSize="12sp"
+                app:cornerRadius="16dp"
+                android:backgroundTint="@color/wl_primary"
+                android:textColor="@color/wl_text_on_primary" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="WorldLens"
-                        android:textColor="@color/wl_text_primary"
-                        android:textSize="22sp"
-                        android:textStyle="bold" />
+    <!-- ================================================================ -->
+    <!-- 3. FLOATING AI RESPONSE PREVIEW (Above Bottom Controls)           -->
+    <!-- ================================================================ -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/responsePreviewCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="14dp"
+        android:layout_marginBottom="8dp"
+        app:cardCornerRadius="18dp"
+        app:cardBackgroundColor="@color/wl_surface"
+        app:strokeWidth="1dp"
+        app:strokeColor="@color/wl_divider"
+        app:cardElevation="3dp"
+        app:layout_constraintBottom_toTopOf="@id/bottomDeckContainer">
 
-                    <ImageButton
-                        android:id="@+id/settingsButton"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@android:drawable/ic_menu_preferences"
-                        app:tint="@color/wl_icon_tint" />
-                </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="10dp">
 
-                <!-- Viewfinder -->
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="match_parent"
-                    android:layout_height="400dp"
-                    app:cardCornerRadius="24dp"
-                    app:cardBackgroundColor="@color/wl_surface"
-                    app:strokeWidth="1dp"
-                    app:strokeColor="@color/wl_divider"
-                    android:layout_marginBottom="24dp">
-
-                    <androidx.camera.view.PreviewView
-                        android:id="@+id/viewFinder"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent" />
-                </com.google.android.material.card.MaterialCardView>
-
-                <!-- Input Row -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:background="@drawable/rounded_input_bg"
-                    android:padding="4dp"
-                    android:layout_marginBottom="24dp">
-
-                    <ImageButton
-                        android:id="@+id/micButton"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@android:drawable/ic_btn_speak_now"
-                        android:contentDescription="Microphone voice input"
-                        app:tint="@color/wl_text_secondary" />
-
-                    <EditText
-                        android:id="@+id/questionInput"
-                        android:layout_width="0dp"
-                        android:layout_height="48dp"
-                        android:layout_weight="1"
-                        android:hint="Ask about what you see..."
-                        android:textColorHint="@color/wl_text_secondary"
-                        android:textColor="@color/wl_text_primary"
-                        android:textSize="16sp"
-                        android:background="@null"
-                        android:paddingEnd="16dp"
-                        android:maxLines="1"
-                        android:inputType="text"
-                        android:importantForAccessibility="yes" />
-                </LinearLayout>
-
-                <!-- Analyze Button -->
-                <Button
-                    android:id="@+id/askButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="64dp"
-                    android:text="✨ Analyze with Gemma"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="32dp"
-                    app:backgroundTint="@color/wl_primary"
-                    android:textColor="@color/wl_text_on_primary"
-                    android:layout_marginBottom="32dp" />
-
-            </LinearLayout>
-
-            <!-- ============================== -->
-            <!-- STATE: LOADING                 -->
-            <!-- ============================== -->
-            <LinearLayout
-                android:id="@+id/loadingStateContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center"
-                android:visibility="gone"
-                android:paddingTop="120dp">
-
-                <ProgressBar
-                    android:id="@+id/loadingProgressBar"
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
-                    android:indeterminateTint="@color/wl_primary" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="UNDERSTANDING IMAGE..."
-                    android:textColor="@color/wl_text_secondary"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.05" />
-            </LinearLayout>
-
-            <!-- ============================== -->
-            <!-- STATE: ERROR                   -->
-            <!-- ============================== -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/errorStateContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:visibility="gone"
-                app:cardBackgroundColor="@color/wl_surface"
-                app:strokeColor="@color/wl_divider"
-                app:strokeWidth="1dp"
-                app:cardCornerRadius="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="24dp"
-                    android:gravity="center">
-
-                    <TextView
-                        android:id="@+id/errorText"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Could not analyze image.\nPlease try again."
-                        android:textColor="@color/wl_text_primary"
-                        android:textSize="16sp"
-                        android:textAlignment="center"
-                        android:layout_marginBottom="16dp" />
-
-                    <Button
-                        android:id="@+id/retryButton"
-                        style="?attr/materialButtonOutlinedStyle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="TRY AGAIN"
-                        android:textColor="@color/wl_primary"
-                        app:strokeColor="@color/wl_divider" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ============================== -->
-            <!-- STATE: RESULT                  -->
-            <!-- ============================== -->
-            <LinearLayout
-                android:id="@+id/resultStateContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <!-- Header -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="24dp">
-
-                    <ImageButton
-                        android:id="@+id/backToHomeButton"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@android:drawable/ic_menu_revert"
-                        app:tint="@color/wl_icon_tint" />
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Result"
-                        android:textAlignment="center"
-                        android:textColor="@color/wl_text_primary"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
-
-                    <ImageButton
-                        android:id="@+id/deleteScanButton"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@android:drawable/ic_menu_delete"
-                        app:tint="@color/wl_icon_tint" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/questionEchoText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Question: What is this?"
-                    android:textColor="@color/wl_text_secondary"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="16dp" />
-
-                <!-- Card 1: AI Answer -->
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
-                    app:cardBackgroundColor="@color/wl_surface"
-                    app:cardCornerRadius="16dp"
-                    app:strokeWidth="1dp"
-                    app:strokeColor="@color/wl_divider">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="16dp">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="🤖 AI Answer"
-                            android:textColor="@color/wl_primary"
-                            android:textStyle="bold"
-                            android:textSize="16sp"
-                            android:layout_marginBottom="8dp" />
-
-                        <TextView
-                            android:id="@+id/resultText"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="..."
-                            android:textColor="@color/wl_text_primary"
-                            android:textSize="16sp"
-                            android:lineSpacingExtra="6dp" />
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
-
-                <!-- Card 2: Morse Summary -->
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
-                    app:cardBackgroundColor="@color/wl_accent_purple"
-                    app:cardCornerRadius="16dp"
-                    app:strokeWidth="0dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="16dp">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="💬 Morse Summary"
-                            android:textColor="@color/wl_primary"
-                            android:textStyle="bold"
-                            android:textSize="16sp"
-                            android:layout_marginBottom="8dp" />
-
-                        <TextView
-                            android:id="@+id/morseSummaryText"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="..."
-                            android:textColor="@color/wl_text_primary"
-                            android:textSize="16sp" />
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
-
-                <!-- Card 3: Morse Code -->
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="24dp"
-                    app:cardBackgroundColor="@color/wl_surface_variant"
-                    app:strokeColor="@color/wl_divider"
-                    app:strokeWidth="1dp"
-                    app:cardCornerRadius="16dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="16dp">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="⚡ Morse Code"
-                            android:textColor="@color/wl_text_secondary"
-                            android:textStyle="bold"
-                            android:textSize="16sp"
-                            android:layout_marginBottom="8dp" />
-
-                        <TextView
-                            android:id="@+id/morseCodeText"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="..."
-                            android:textColor="@color/wl_text_primary"
-                            android:textSize="14sp"
-                            android:fontFamily="monospace"
-                            android:textIsSelectable="true" />
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
-
-                <!-- Primary Action Button -->
-                <Button
-                    android:id="@+id/playMorseButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:text="▶ Play Morse"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="28dp"
-                    app:backgroundTint="@color/wl_primary"
-                    android:textColor="@color/wl_text_on_primary"
-                    android:layout_marginBottom="8dp" />
-
-                <Button
-                    android:id="@+id/stopMorseButton"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:text="■ Stop"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="28dp"
-                    android:textColor="@color/wl_primary"
-                    app:strokeColor="@color/wl_primary"
-                    android:visibility="gone"
-                    android:layout_marginBottom="8dp" />
-
-                <Button
-                    android:id="@+id/readAnswerButton"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:text="🔊 Read Aloud"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="28dp"
-                    android:textColor="@color/wl_text_secondary"
-                    app:strokeColor="@color/wl_divider"
-                    android:layout_marginBottom="24dp" />
-
-                <Button
-                    android:id="@+id/openExportStateButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:text="Export &amp; Share"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="28dp"
-                    app:backgroundTint="@color/wl_surface_variant"
-                    android:textColor="@color/wl_text_primary"
-                    android:layout_marginBottom="32dp" />
-
-            </LinearLayout>
-
-            <!-- ============================== -->
-            <!-- STATE: EXPORT                  -->
-            <!-- ============================== -->
-            <LinearLayout
-                android:id="@+id/exportStateContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <!-- Header -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="24dp">
-
-                    <ImageButton
-                        android:id="@+id/backToResultButton"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@android:drawable/ic_menu_revert"
-                        app:tint="@color/wl_icon_tint" />
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Export &amp; Share"
-                        android:textAlignment="center"
-                        android:textColor="@color/wl_text_primary"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
-
-                    <View
-                        android:layout_width="48dp"
-                        android:layout_height="48dp" /> <!-- Spacer -->
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="24dp">
-
-                    <!-- Copy Card -->
-                    <com.google.android.material.card.MaterialCardView
-                        android:id="@+id/copyResultCard"
-                        android:layout_width="0dp"
-                        android:layout_height="140dp"
-                        android:layout_weight="1"
-                        android:layout_marginEnd="8dp"
-                        app:cardBackgroundColor="@color/wl_surface"
-                        app:cardCornerRadius="16dp"
-                        app:strokeWidth="1dp"
-                        app:strokeColor="@color/wl_divider">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:orientation="vertical"
-                            android:gravity="center"
-                            android:padding="16dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="📄"
-                                android:textSize="32sp"
-                                android:layout_marginBottom="8dp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Copy to Clipboard"
-                                android:textColor="@color/wl_text_primary"
-                                android:textStyle="bold"
-                                android:textAlignment="center"
-                                android:textSize="14sp" />
-                        </LinearLayout>
-                    </com.google.android.material.card.MaterialCardView>
-
-                    <!-- Export Card -->
-                    <com.google.android.material.card.MaterialCardView
-                        android:id="@+id/exportReportCard"
-                        android:layout_width="0dp"
-                        android:layout_height="140dp"
-                        android:layout_weight="1"
-                        android:layout_marginStart="8dp"
-                        app:cardBackgroundColor="@color/wl_surface"
-                        app:cardCornerRadius="16dp"
-                        app:strokeWidth="1dp"
-                        app:strokeColor="@color/wl_divider">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:orientation="vertical"
-                            android:gravity="center"
-                            android:padding="16dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="📥"
-                                android:textSize="32sp"
-                                android:layout_marginBottom="8dp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Save as Markdown"
-                                android:textColor="@color/wl_text_primary"
-                                android:textStyle="bold"
-                                android:textAlignment="center"
-                                android:textSize="14sp" />
-                        </LinearLayout>
-                    </com.google.android.material.card.MaterialCardView>
-                </LinearLayout>
-
-                <Button
-                    android:id="@+id/newScanButtonFromExport"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:text="Start New Scan"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="28dp"
-                    android:textColor="@color/wl_primary"
-                    app:strokeColor="@color/wl_primary"
-                    android:layout_marginBottom="32dp" />
-
-            </LinearLayout>
-            
-            <!-- Accessibility toggle hidden at the very bottom -->
+            <!-- AI Header Row -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center"
-                android:paddingTop="32dp"
-                android:paddingBottom="16dp">
+                android:gravity="center_vertical"
+                android:layout_marginBottom="4dp">
 
                 <TextView
-                    android:id="@+id/accessibilityLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Accessibility Mode"
-                    android:textSize="14sp"
-                    android:textColor="@color/wl_text_secondary"
-                    android:layout_marginEnd="12dp" />
+                    android:text="AI"
+                    android:textColor="@color/wl_primary"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.06" />
 
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/accessibilitySwitch"
+                <TextView
+                    android:id="@+id/streamingIndicator"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                    android:layout_height="wrap_content"
+                    android:text="  •••"
+                    android:textColor="@color/wl_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/speakingIndicator"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="  🔊 Speaking"
+                    android:textColor="@color/wl_primary"
+                    android:textSize="11sp"
+                    android:visibility="gone" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:id="@+id/openChatFromPreview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Chat →"
+                    android:textColor="@color/wl_primary"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="2dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Open complete chat conversation" />
             </LinearLayout>
 
+            <!-- Latest Response Snippet -->
+            <TextView
+                android:id="@+id/resultText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Point camera at an object and hold the microphone to ask."
+                android:textColor="@color/wl_text_body"
+                android:textSize="14sp"
+                android:maxLines="3"
+                android:ellipsize="end"
+                android:lineSpacingExtra="3dp" />
         </LinearLayout>
-    </ScrollView>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- ================================================================ -->
+    <!-- 4. LOWER CONTROL DECK (Wireframe: Search Bar + Morse + Mic + Dropdown) -->
+    <!-- ================================================================ -->
+    <LinearLayout
+        android:id="@+id/bottomDeckContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingBottom="12dp"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <!-- 4A. TEXT INPUT COMPOSER ("Search Bar" in Wireframe) -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp">
+
+            <!-- Normal Input State -->
+            <LinearLayout
+                android:id="@+id/normalComposerLayout"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_composer_field"
+                android:paddingStart="16dp"
+                android:paddingEnd="6dp">
+
+                <EditText
+                    android:id="@+id/questionInput"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:hint="Ask about what you see..."
+                    android:textColorHint="@color/wl_text_secondary"
+                    android:textColor="@color/wl_text_primary"
+                    android:textSize="14sp"
+                    android:background="@null"
+                    android:maxLines="2"
+                    android:imeOptions="actionSend"
+                    android:inputType="textCapSentences|textShortMessage"
+                    android:importantForAccessibility="yes" />
+
+                <!-- Send / Submit Arrow Button -->
+                <ImageButton
+                    android:id="@+id/sendQuestionButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@android:drawable/ic_menu_send"
+                    android:contentDescription="Submit question"
+                    app:tint="@color/wl_primary" />
+            </LinearLayout>
+
+            <!-- Hold-to-Talk Listening State Overlay -->
+            <LinearLayout
+                android:id="@+id/listeningComposerLayout"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_composer_field"
+                android:paddingHorizontal="12dp"
+                android:visibility="gone">
+
+                <com.example.worldlens.ui.RecordingWaveformView
+                    android:id="@+id/waveformView"
+                    android:layout_width="0dp"
+                    android:layout_height="38dp"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:id="@+id/listeningPromptText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Listening..."
+                    android:textColor="@color/wl_primary"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:layout_marginStart="8dp" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- 4B. THREE-ELEMENT BOTTOM ACTION ROW (Morse | Mic | Dropdown) -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <!-- LEFT: Morse Action Button (Wireframe: "morse button") -->
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/playMorseButton"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:minWidth="96dp"
+                android:text="••• Morse"
+                android:textColor="@color/wl_text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_pill_button"
+                android:paddingHorizontal="14dp"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                android:contentDescription="Play Morse code audio for the current response" />
+
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/stopMorseButton"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:minWidth="96dp"
+                android:text="■ Stop"
+                android:textColor="@color/wl_text_on_alert"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_pill_button_stop"
+                android:paddingHorizontal="14dp"
+                android:visibility="gone"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                android:contentDescription="Stop Morse code audio playback" />
+
+            <!-- CENTER: Circular Press-and-Hold Microphone (Wireframe: "mic") -->
+            <ImageButton
+                android:id="@+id/micButton"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_mic_circle"
+                android:src="@android:drawable/ic_btn_speak_now"
+                android:contentDescription="Hold to speak, release to finish"
+                app:tint="@color/wl_text_on_primary"
+                android:elevation="4dp"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent" />
+
+            <!-- RIGHT: Dropdown / Quick Actions Button (Wireframe: "drop down") -->
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/moreActionsButton"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:minWidth="90dp"
+                android:text="More ▼"
+                android:textColor="@color/wl_text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_pill_button"
+                android:paddingHorizontal="14dp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                android:contentDescription="Open quick actions menu" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </LinearLayout>
+
+    <!-- ================================================================ -->
+    <!-- 5. DEDICATED CHAT PANEL SCREEN (Wireframe Right: "Chat and others") -->
+    <!-- ================================================================ -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/chatPanelContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/wl_background"
+        android:visibility="gone"
+        android:elevation="12dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Chat Header -->
+        <LinearLayout
+            android:id="@+id/chatHeaderLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="10dp"
+            android:background="@color/wl_surface"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageButton
+                android:id="@+id/closeChatButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_revert"
+                android:contentDescription="Return to live camera"
+                app:tint="@color/wl_icon_tint_dark" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Conversation"
+                android:textColor="@color/wl_primary"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:paddingStart="8dp" />
+
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/newChatPanelButton"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:text="+ New Chat"
+                android:textColor="@color/wl_text_primary"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_pill_button"
+                android:paddingHorizontal="10dp"
+                android:contentDescription="Reset conversation" />
+        </LinearLayout>
+
+        <!-- Chat Messages Scroll Area -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/chatScrollView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:fillViewport="true"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="12dp"
+            app:layout_constraintTop_toBottomOf="@id/chatHeaderLayout"
+            app:layout_constraintBottom_toTopOf="@id/chatComposerContainer">
+
+            <LinearLayout
+                android:id="@+id/chatMessagesLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="16dp" />
+        </androidx.core.widget.NestedScrollView>
+
+        <!-- Chat Follow-up Composer at Bottom -->
+        <LinearLayout
+            android:id="@+id/chatComposerContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_composer_field"
+            android:layout_marginHorizontal="14dp"
+            android:layout_marginBottom="12dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="6dp"
+            android:minHeight="50dp"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <EditText
+                android:id="@+id/chatQuestionInput"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Ask a follow-up..."
+                android:textColorHint="@color/wl_text_secondary"
+                android:textColor="@color/wl_text_primary"
+                android:textSize="14sp"
+                android:background="@null"
+                android:maxLines="3"
+                android:imeOptions="actionSend"
+                android:inputType="textCapSentences|textShortMessage"
+                android:importantForAccessibility="yes" />
+
+            <ImageButton
+                android:id="@+id/chatMicButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_mic_circle"
+                android:src="@android:drawable/ic_btn_speak_now"
+                android:contentDescription="Hold to speak in chat"
+                app:tint="@color/wl_text_on_primary"
+                android:layout_marginEnd="6dp" />
+
+            <ImageButton
+                android:id="@+id/chatSendButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_send"
+                android:contentDescription="Send follow-up question"
+                app:tint="@color/wl_primary" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>

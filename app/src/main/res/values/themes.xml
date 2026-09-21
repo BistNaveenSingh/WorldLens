@@ -4,7 +4,7 @@
         <item name="colorOnPrimary">@color/wl_text_on_primary</item>
         <item name="colorPrimaryContainer">@color/wl_primary_light</item>
         <item name="colorOnPrimaryContainer">@color/wl_primary</item>
-        <item name="colorSecondary">@color/wl_text_secondary</item>
+        <item name="colorSecondary">@color/wl_secondary</item>
         <item name="colorOnSecondary">@color/wl_surface</item>
         <item name="colorSurface">@color/wl_surface</item>
         <item name="colorOnSurface">@color/wl_text_primary</item>

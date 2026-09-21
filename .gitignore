@@ -14,9 +14,10 @@ local.properties
 *.jks
 .artifacts/
 
-/brag-out-2026-09-21-1723
-brag-out-2026-09-21-1723
+
 /brag-output-2026-09-21-1723
 brag-output-2026-09-21-1723
 .agents/
 .agents
+/long-video-output
+long-video-output
